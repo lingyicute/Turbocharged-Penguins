@@ -67,6 +67,12 @@
     }
 
     unlock() {
+      // Warm the one-shot buffers on the first gesture: the intro still
+      // plays for a couple of seconds, so the first in-game cue can take
+      // the decoded (SEEK_SEC-trimmed) Web Audio path instead of the
+      // untrimmed media-element fallback. Later unlocks hit the
+      // buffered/in-flight guards in loadEffect and cost nothing.
+      for (const id of EFFECT_IDS) this.loadEffect(id);
       if (this.unlocked) {
         this.ensureMusic();
         if (this.stingPending) this.playIntroSting();

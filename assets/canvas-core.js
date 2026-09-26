@@ -20,6 +20,12 @@ var createCanvas = function (width, height) {
     }
     var game = _cachedGameCanvas;
     var stageSized = game && width === game.width && height === game.height && width > 0;
+    // Stage-sized canvases are pooled instead of allocated per call: the
+    // filter sprites (sprite318 et al.) build scratch copies of the whole
+    // stage. Every scratch canvas is composited back to its target within
+    // the same frame, and beginCanvasPool() restarts the cursor at each
+    // render, so a pooled canvas is only reused on a later frame once its
+    // contents are guaranteed to be stale.
     if (stageSized) {
         if (_poolW !== width || _poolH !== height) {
             _canvasPool = [];
@@ -973,8 +979,6 @@ cxform.prototype.isEmpty = function () {
     return this._empty;
 };
 
-var IDENTITY_CXFORM = new cxform(0, 0, 0, 0, 255, 255, 255, 255);
-
 var placeRaw = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time) {
     ctx.save();
     ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
@@ -1449,7 +1453,11 @@ function parsePathString(p) {
                 drawCommand = tok;
                 break;
             case 'Z':
+                // Both consumers need the close: the fill branch reads ops,
+                // the stroked replay reads rawCoords. Omitting it from
+                // rawCoords would silently drop closePath from stroked paths.
                 ops.push(0);
+                rawCoords.push(0);
                 break;
             default:
                 switch (drawCommand) {
@@ -1536,6 +1544,8 @@ function drawPath(ctx, p, doStroke, scaleMode) {
                     m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
                     m0 * x + m2 * y + m4, m1 * x + m3 * y + m5
                 );
+            } else if (op === 0) {
+                ctx.closePath();
             }
         }
         ctx.stroke();

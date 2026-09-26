@@ -161,8 +161,11 @@
         }
         if (steps > 7) this.physAcc = 0;
       } else this.physAcc = 0;
-      if (this.forceRender || this.visualStateChanged()) {
-        this.forceRender = false;
+      // Always refresh the snapshot, even on forced frames: skipping the
+      // call would leave the next comparison against a stale state.
+      const changed = this.forceRender || this.visualStateChanged();
+      this.forceRender = false;
+      if (changed) {
         this.renderer.render();
         // Rendering creates clips the pre-render state did not yet include.
         this.visualStateChanged();
