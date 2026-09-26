@@ -50,6 +50,7 @@
       // Avoid downloading the fallback track while Web Audio is in use.
       this.music.preload = 'none';
       this.music.volume = 0;
+      this.lastMusicVolume = 0;
       this.bed = null;
       this.bedGain = null;
       this.bedBuffer = null;
@@ -98,6 +99,9 @@
       this.musicStarted = true;
       this.music.preload = 'auto';
       if (!this.music.src) this.music.src = urlFor(1);
+      // The output has switched from AudioParam to HTMLMediaElement.volume.
+      this.lastMusicVolume = null;
+      this.setMusicVolume(this.muted ? 0 : this.fade * this.musicVolume);
       try {
         Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; });
       } catch (_) {
@@ -114,6 +118,7 @@
       src.loop = true;
       src.connect(gain).connect(this.audioContext.destination);
       gain.gain.value = 0;
+      this.lastMusicVolume = 0;
       this.bed = src;
       this.bedGain = gain;
       try { src.start(); this.bedPending = false; }
@@ -345,11 +350,9 @@
       } catch (_) {}
     }
 
-    update(dt, playing) {
-      if (playing) this.stopIntroSting();
-      else this.applyStingEnvelope();
-      this.fade = clamp(this.fade + (playing ? 1 : -1) * dt / 1200, 0, 1);
-      const vol = this.muted ? 0 : this.fade * this.musicVolume;
+    setMusicVolume(vol) {
+      if (this.lastMusicVolume === vol) return;
+      this.lastMusicVolume = vol;
       if (this.bedGain && this.audioContext) {
         this.bedGain.gain.setValueAtTime(vol, this.audioContext.currentTime);
       } else {
@@ -357,11 +360,18 @@
       }
     }
 
+    update(dt, playing) {
+      if (playing) this.stopIntroSting();
+      else this.applyStingEnvelope();
+      this.fade = clamp(this.fade + (playing ? 1 : -1) * dt / 1200, 0, 1);
+      const vol = this.muted ? 0 : this.fade * this.musicVolume;
+      this.setMusicVolume(vol);
+    }
+
     toggle() {
       this.muted = !this.muted;
       const vol = this.muted ? 0 : this.fade * this.musicVolume;
-      if (this.bedGain && this.audioContext) this.bedGain.gain.setValueAtTime(vol, this.audioContext.currentTime);
-      else this.music.volume = vol;
+      this.setMusicVolume(vol);
       this.applyStingEnvelope();
       for (const a of this.effects) a.muted = this.muted;
       if (!this.muted) this.unlock();
