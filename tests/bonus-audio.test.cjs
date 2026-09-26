@@ -178,6 +178,26 @@ test('one-shot buffers load on demand while the first cue uses the immediate fal
   assert.equal(plays(), 2);
 });
 
+test('steady music volume avoids redundant AudioParam writes', () => {
+  const {GameAudio} = createAudio(() => Promise.reject(new Error('not used')), () => Promise.resolve());
+  const audio = new GameAudio();
+  let writes = 0;
+  audio.bedGain = {gain: {setValueAtTime() { writes++; }}};
+  audio.fade = 1;
+  audio.unlocked = true;
+  audio.musicStarted = true;
+
+  audio.update(0, true);
+  audio.update(0, true);
+  assert.equal(writes, 1, 'unchanged volume is submitted once');
+  audio.toggle();
+  assert.equal(writes, 2, 'mute still updates the gain immediately');
+  audio.update(0, true);
+  assert.equal(writes, 2, 'muted steady state is also deduplicated');
+  audio.toggle();
+  assert.equal(writes, 3, 'unmute restores the current fade volume');
+});
+
 test('successful Web Audio loading starts one bed and clears the pending state', async () => {
   const first = deferred();
   const {GameAudio, plays, bedStarts} = createAudio(url =>
