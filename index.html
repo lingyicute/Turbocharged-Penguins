@@ -4922,7 +4922,13 @@ function text116(ctx,ctrans,frame,ratio,time){
 	var textColor = tocolor(ctrans.apply([198,49,181,1]));
 	var size = 0.3515625;
 	var adv = scaleAdvances({L:424.4,E:475.6,A:550.7,D:565.6,R:564.9,B:611.4,O:536.4}, size);
-	drawPlacedGlyphs(ctx, font82, textColor, layoutGlyphs("LEADERBOARD", adv, size, -376, 60, true));
+	// This field is placed at (-1048, -656). Those numbers are already applied
+	// by place(), so glyph x/y are local. The old TURBOCHARGE run used baseline
+	// 280 and was visually centered at 1243. Using the parent box center (60)
+	// and 280-656 (-376) applies that translation twice, so the word sits 52px
+	// left and 33px up, on the sentence above the box. sprite127 carries this
+	// field on the menu and the end panel, so both shift the same way.
+	drawPlacedGlyphs(ctx, font82, textColor, layoutGlyphs("LEADERBOARD", adv, size, 280, 1243, true));
 }
 function shape118(ctx,ctrans,frame,ratio,time){
 	var pathData="M 1183 -501 Q 1284 -268 1284 0 1282 268 1183 499 1084 732 909 908 733 1083 500 1184 269 1283 1 1285 -267 1283 -500 1184 -731 1085 -908 908 -1084 732 -1183 499 -1282 268 -1284 0 -1282 -268 -1183 -501 -1084 -732 -908 -909 -731 -1085 -500 -1184 -267 -1283 1 -1285 269 -1283 500 -1184 733 -1085 909 -909 1084 -732 1183 -501";
