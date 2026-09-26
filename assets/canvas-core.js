@@ -20,13 +20,18 @@ var createCanvas = function (width, height) {
     }
     var game = _cachedGameCanvas;
     var stageSized = game && width === game.width && height === game.height && width > 0;
+    // The fallback reset below clears pixels and a few properties, but cannot
+    // reset the native save/clip stack. Only pool where the full Canvas reset
+    // operation is available; otherwise return a fresh canvas as before.
+    var canReset = typeof CanvasRenderingContext2D !== "undefined" &&
+        typeof CanvasRenderingContext2D.prototype.reset === "function";
     // Stage-sized canvases are pooled instead of allocated per call: the
     // filter sprites (sprite318 et al.) build scratch copies of the whole
     // stage. Every scratch canvas is composited back to its target within
     // the same frame, and beginCanvasPool() restarts the cursor at each
     // render, so a pooled canvas is only reused on a later frame once its
     // contents are guaranteed to be stale.
-    if (stageSized) {
+    if (canReset && stageSized) {
         if (_poolW !== width || _poolH !== height) {
             _canvasPool = [];
             _canvasPoolUsed = 0;
