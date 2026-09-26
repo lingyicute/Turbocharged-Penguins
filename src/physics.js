@@ -183,12 +183,11 @@
         play(g, PATH.wall, 2, true);
       }
       for (const [n,tile] of g.tiles) {
+        const nTileY = g.bgY - n * CONFIG.cliffTileHeight;
         for (const b of tile.bonuses) {
           if (b.collected) continue;
-          // Inline the center math in this high-frequency loop; allocating a
-          // temporary point object for every candidate bonus is unnecessary.
           const bx = g.bgX + b.x + BONUS_CENTER_OFFSET;
-          const by = g.bgY - n * CONFIG.cliffTileHeight + b.y + BONUS_CENTER_OFFSET;
+          const by = nTileY + b.y + BONUS_CENTER_OFFSET;
           const dx=(g.x-bx)/36, dy=(g.y-by)/48;
           if (g.y>-10 && dx*dx+dy*dy<1) {
             Physics.collectBonus(b, g, audio);

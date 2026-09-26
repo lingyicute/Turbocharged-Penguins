@@ -48,6 +48,9 @@
 
   // Bonus graphics must stay on their icon frame until bonus.play().
   const BONUS_HOLD = new Set([478, 488, 492, 496, 498, 501, 503, 506, 508]);
+  const SHOTS = Object.freeze({2: ['p1'], 3: ['p2', 'p1'], 4: ['p3']});
+  const STANDING_4 = Object.freeze(['p2', 'p1']);
+  const STANDING_DEFAULT = Object.freeze(['p3', 'p2', 'p1']);
 
   class ClipTimelines {
     constructor(app) {
@@ -58,6 +61,7 @@
       this.penguins = new Map();
       this.renderNumber = 0;
       this.stack = [];
+      this.stackIndex = -1;
       this.pending = [];
     }
 
@@ -72,16 +76,26 @@
 
     begin() {
       this.renderNumber++;
-      this.stack = [{path: 'root', id: 0, frame: this.app.rootFrame, counts: Object.create(null)}];
+      this.stackIndex = 0;
+      let root = this.stack[0];
+      if (!root) {
+        this.stack[0] = {path: 'root', id: 0, frame: this.app.rootFrame, counts: Object.create(null)};
+      } else {
+        root.path = 'root';
+        root.id = 0;
+        root.frame = this.app.rootFrame;
+        const c = root.counts;
+        for (const k in c) delete c[k];
+      }
     }
 
     end() {
       for (const [path, clip] of this.clips)
         if (clip.seen !== this.renderNumber) this.clips.delete(path);
-      this.stack.length = 0;
+      this.stackIndex = -1;
     }
 
-    parent() { return this.stack[this.stack.length - 1]; }
+    parent() { return this.stack[this.stackIndex]; }
 
     enter(name) {
       const parent = this.parent();
@@ -90,10 +104,9 @@
       const id = name.startsWith('sprite') ? Number(name.slice(6)) : 0;
       let identity = ordinal;
       if (parent.id === 379 && id === 372) {
-        const shots = {2: ['p1'], 3: ['p2', 'p1'], 4: ['p3']};
-        identity = shots[parent.frame]?.[ordinal] || ordinal;
+        identity = SHOTS[parent.frame]?.[ordinal] || ordinal;
       } else if (parent.id === 379 && id === 378) {
-        const standing = parent.frame === 4 ? ['p2', 'p1'] : ['p3', 'p2', 'p1'];
+        const standing = parent.frame === 4 ? STANDING_4 : STANDING_DEFAULT;
         identity = standing[ordinal] || ordinal;
       }
       const path = parent.path + '/' + name + '#' + identity;
@@ -118,11 +131,21 @@
       clip.parentFrame = parent.frame;
       if (id) this.byId.set(id, clip);
       if (id === 378 && typeof identity === 'string') this.penguins.set(identity, clip);
-      this.stack.push({path, id, frame: clip.frame, counts: Object.create(null)});
+      this.stackIndex++;
+      let entry = this.stack[this.stackIndex];
+      if (!entry) {
+        this.stack[this.stackIndex] = {path, id, frame: clip.frame, counts: Object.create(null)};
+      } else {
+        entry.path = path;
+        entry.id = id;
+        entry.frame = clip.frame;
+        const c = entry.counts;
+        for (const k in c) delete c[k];
+      }
       return clip;
     }
 
-    leave() { this.stack.pop(); }
+    leave() { this.stackIndex--; }
     lookup(path) { return this.clips.get(path); }
     play(clip) { if (clip) clip.playing = true; }
     stop(clip) { if (clip) clip.playing = false; }
@@ -149,8 +172,10 @@
     }
 
     flushPending(clip) {
+      if (this.pending.length === 0) return;
       const left = [];
-      for (const item of this.pending) {
+      for (let i = 0; i < this.pending.length; i++) {
+        const item = this.pending[i];
         if (item.path !== clip.path) { left.push(item); continue; }
         if (item.frame == null) this.play(clip);
         else this.goto(clip, item.frame, item.playing, !!item.retrigger);

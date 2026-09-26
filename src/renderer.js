@@ -71,6 +71,23 @@
     }
 
     // Device pixels per local unit, after the current transform and this place.
+    getDeviceScale(ctx, matrix) {
+      const p = ctx._matrix;
+      if (!p || !matrix) return 0;
+      const dx = p[0] * matrix[0] + p[2] * matrix[1];
+      const dy = p[1] * matrix[0] + p[3] * matrix[1];
+      const ax = Math.hypot(dx, dy);
+      if (ax <= 0.02) return 0;
+      const ex = p[0] * matrix[2] + p[2] * matrix[3];
+      const ey = p[1] * matrix[2] + p[3] * matrix[3];
+      const ay = Math.hypot(ex, ey);
+      if (ay <= 0.02) return 0;
+      const maxA = ax > ay ? ax : ay;
+      const minA = ax < ay ? ax : ay;
+      if (maxA / minA > 1.15) return 0;
+      return (ax + ay) * 0.5;
+    }
+
     deviceAxes(ctx, matrix) {
       const p = ctx._matrix;
       if (!p || !matrix) return null;
@@ -83,8 +100,9 @@
 
     cxKey(ctrans) {
       if (!ctrans || ctrans.isEmpty()) return '0';
-      return ctrans.r_add + ',' + ctrans.g_add + ',' + ctrans.b_add + ',' + ctrans.a_add + ',' +
-        ctrans.r_mult + ',' + ctrans.g_mult + ',' + ctrans.b_mult + ',' + ctrans.a_mult;
+      if (ctrans._key) return ctrans._key;
+      return (ctrans._key = ctrans.r_add + ',' + ctrans.g_add + ',' + ctrans.b_add + ',' + ctrans.a_add + ',' +
+        ctrans.r_mult + ',' + ctrans.g_mult + ',' + ctrans.b_mult + ',' + ctrans.a_mult);
     }
 
     strokes(obj) {
@@ -109,6 +127,13 @@
 
     // Union of path points the shape draws before it scales into a bitmap fill.
     localBounds(obj, frame, ratio, ctrans) {
+      const fn = window[obj];
+      if (typeof fn !== 'function') return null;
+      const ratioKey = ratio == null ? 0 : Math.round(ratio * 1000) / 1000;
+      const bKey = (frame ?? 0) + '|' + ratioKey;
+      if (fn._boundsCache && fn._boundsCache.has(bKey)) {
+        return fn._boundsCache.get(bKey);
+      }
       if (!this._meter) {
         const c = document.createElement('canvas');
         c.width = 2;
@@ -123,7 +148,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.rasterizing = true;
       try {
-        window[obj](ctx, ctrans, frame, ratio, 0);
+        fn(ctx, ctrans, frame, ratio, 0);
       } catch (e) {
         return null;
       } finally {
@@ -134,7 +159,12 @@
         ctx.setTransform(1, 0, 0, 1, 0, 0);
       }
       const b = ctx._localBox;
-      if (!b || !b.n) return null;
+      if (!fn._boundsCache) fn._boundsCache = new Map();
+      if (!b || !b.n) {
+        fn._boundsCache.set(bKey, null);
+        return null;
+      }
+      fn._boundsCache.set(bKey, b);
       return b;
     }
 
@@ -152,20 +182,13 @@
       // Caching those clips the line. Fills are the expensive redraw.
       if (this.strokes(obj) || window[obj]._noRaster) return false;
       if (!this.imagesReady(obj)) return false;
-      const axes = this.deviceAxes(ctx, matrix);
-      if (!axes) return false;
-      const [ax, ay] = axes;
-      if (!(ax > 0.02 && ay > 0.02)) return false;
-      if (Math.max(ax, ay) / Math.min(ax, ay) > 1.15) return false;
-      const scale = (ax + ay) * 0.5;
+      const scale = this.getDeviceScale(ctx, matrix);
+      if (!scale) return false;
       const scaleKey = Math.round(scale * 1000) / 1000;
       const ratioKey = ratio == null ? 0 : Math.round(ratio * 1000) / 1000;
       const key = obj + '|' + (frame ?? 0) + '|' + ratioKey + '|' + this.cxKey(ctrans) + '|' + scaleKey;
       let entry = this.rasters.get(key);
-      if (entry) {
-        this.rasters.delete(key);
-        this.rasters.set(key, entry);
-      } else {
+      if (!entry) {
         const bounds = this.localBounds(obj, frame ?? 0, ratioKey, ctrans);
         if (!bounds) {
           window[obj]._noRaster = true;
@@ -342,7 +365,8 @@
       ));
     }
     place(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, time) {
-      if (this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
+      if ((obj.charCodeAt(0) === 115 ? obj.charCodeAt(1) === 104 : (obj.startsWith('image') || obj.startsWith('morphshape'))) &&
+          this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
       // sprite13 is the white corner cap (shape12), placed on all four corners.
       if (obj === 'sprite13') return;
       const a = this.app, g = a.game;
@@ -481,26 +505,36 @@
     drawFar(canvas, ctx, ctrans, blend) {
       const g = this.app.game;
       const bottom = Math.floor(g.farY / 725);
+      if (!this._farMat) this._farMat = [0.05, 0, 0, 0.05, 0, 0];
+      const mat = this._farMat;
+      mat[4] = g.farX;
       for (let n = bottom; n <= bottom + 1; n++) {
         const f = clamp(n - 1, 0, 25);
-        this.basePlace('sprite460', canvas, ctx,
-          [0.05,0,0,0.05,g.farX,g.farY-(n-1)*725], ctrans, blend, f, 0, 0);
+        mat[5] = g.farY - (n - 1) * 725;
+        this.basePlace('sprite460', canvas, ctx, mat, ctrans, blend, f, 0, 0);
       }
     }
     drawTiles(canvas, ctx, ctrans, blend) {
       const g = this.app.game;
       const bottom = Math.floor(g.bgY / 445);
+      if (!this._tileMat) this._tileMat = [0.05, 0, 0, 0.05, 0, 0];
+      if (!this._bonusMat) this._bonusMat = [0.05, 0, 0, 0.05, 0, 0];
+      const tileMat = this._tileMat;
+      const bonusMat = this._bonusMat;
+      tileMat[4] = g.bgX;
+      bonusMat[4] = g.bgX;
       for (let n = bottom; n <= bottom + 1; n++) {
         const f = n === 0 ? 1 : n < 28 ? 2 : n === 28 ? 3 : 0;
         this.drawingTile = true;
+        tileMat[5] = g.bgY - n * 445;
         try {
-          this.basePlace('sprite537', canvas, ctx,
-            [0.05,0,0,0.05,g.bgX,g.bgY-n*445], ctrans, blend, f, 0, 0);
+          this.basePlace('sprite537', canvas, ctx, tileMat, ctrans, blend, f, 0, 0);
         } finally { this.drawingTile = false; }
         if (n === 28) {
-          this.basePlace('sprite514', canvas, ctx,
-            [0.05,0,0,0.05,g.bgX+39.1,g.bgY-n*445+388.1],
-            ctrans, blend, 1, 0, 0);
+          if (!this._floeMat) this._floeMat = [0.05, 0, 0, 0.05, 0, 0];
+          this._floeMat[4] = g.bgX + 39.1;
+          this._floeMat[5] = g.bgY - n * 445 + 388.1;
+          this.basePlace('sprite514', canvas, ctx, this._floeMat, ctrans, blend, 1, 0, 0);
         }
         const tile = g.tiles.get(n);
         if (!tile) continue;
@@ -510,10 +544,10 @@
           if (b.collected) ctx.globalAlpha *= clamp(1-(this.app.now-b.collected)/560,0,1);
           this.currentBonus = b;
           this.drawingTile = true;
+          bonusMat[4] = g.bgX + b.x;
+          bonusMat[5] = g.bgY - n * 445 + b.y;
           try {
-            this.basePlace('sprite509', canvas, ctx,
-              [0.05,0,0,0.05,g.bgX+b.x,g.bgY-n*445+b.y],
-              ctrans, blend, b.type, 0, 0);
+            this.basePlace('sprite509', canvas, ctx, bonusMat, ctrans, blend, b.type, 0, 0);
           } finally {
             this.drawingTile = false;
             this.currentBonus = null;
@@ -524,9 +558,10 @@
         const minScore = (n-1)*445 + 500;
         if (best > 12000 && best > minScore && best < minScore+445) {
           const markerY = 445-(best-minScore);
-          this.basePlace('sprite520', canvas, ctx,
-            [0.05,0,0,0.05,g.bgX+39,g.bgY-n*445+markerY],
-            ctrans, blend, n>28?2:1, 0, 0);
+          if (!this._markerMat) this._markerMat = [0.05, 0, 0, 0.05, 0, 0];
+          this._markerMat[4] = g.bgX + 39;
+          this._markerMat[5] = g.bgY - n * 445 + markerY;
+          this.basePlace('sprite520', canvas, ctx, this._markerMat, ctrans, blend, n>28?2:1, 0, 0);
         }
       }
     }

@@ -12,12 +12,15 @@ var _canvasPool = [];
 var _canvasPoolUsed = 0;
 var _poolW = 0;
 var _poolH = 0;
+var _cachedGameCanvas = null;
 var beginCanvasPool = function () { _canvasPoolUsed = 0; };
 var createCanvas = function (width, height) {
-    var game = document.getElementById("game");
+    if (!_cachedGameCanvas || !_cachedGameCanvas.isConnected) {
+        _cachedGameCanvas = typeof document !== "undefined" ? document.getElementById("game") : null;
+    }
+    var game = _cachedGameCanvas;
     var stageSized = game && width === game.width && height === game.height && width > 0;
-    var canReset = typeof CanvasRenderingContext2D !== "undefined" && CanvasRenderingContext2D.prototype.reset;
-    if (canReset && stageSized) {
+    if (stageSized) {
         if (_poolW !== width || _poolH !== height) {
             _canvasPool = [];
             _canvasPoolUsed = 0;
@@ -41,7 +44,7 @@ var createCanvas = function (width, height) {
             }
             if (g._enhanced) {
                 g._matrix = [1, 0, 0, 1, 0, 0];
-                g._savedMatrices = [g._matrix];
+                g._savedMatrices = [];
                 g._clipBox = null;
                 g._pathBox = null;
                 g._cachedPath = null;
@@ -789,85 +792,109 @@ BlendModes.blendCanvas = function (src, dst, result, modeIndex) {
 
 
 function concatMatrix(m1, m2) {
-    var result = [1, 0, 0, 1, 0, 0];
-    var scaleX = 0;
-    var rotateSkew0 = 1;
-    var rotateSkew1 = 2;
-    var scaleY = 3;
-    var translateX = 4;
-    var translateY = 5;
-
-    result[scaleX] = m2[scaleX] * m1[scaleX] + m2[rotateSkew1] * m1[rotateSkew0];
-    result[rotateSkew0] = m2[rotateSkew0] * m1[scaleX] + m2[scaleY] * m1[rotateSkew0];
-    result[rotateSkew1] = m2[scaleX] * m1[rotateSkew1] + m2[rotateSkew1] * m1[scaleY];
-    result[scaleY] = m2[rotateSkew0] * m1[rotateSkew1] + m2[scaleY] * m1[scaleY];
-    result[translateX] = m2[scaleX] * m1[translateX] + m2[rotateSkew1] * m1[translateY] + m2[translateX];
-    result[translateY] = m2[rotateSkew0] * m1[translateX] + m2[scaleY] * m1[translateY] + m2[translateY];
-
-    return result;
+    var a1 = m1[0], b1 = m1[1], c1 = m1[2], d1 = m1[3], e1 = m1[4], f1 = m1[5];
+    var a2 = m2[0], b2 = m2[1], c2 = m2[2], d2 = m2[3], e2 = m2[4], f2 = m2[5];
+    return [
+        a2 * a1 + c2 * b1,
+        b2 * a1 + d2 * b1,
+        a2 * c1 + c2 * d1,
+        b2 * c1 + d2 * d1,
+        a2 * e1 + c2 * f1 + e2,
+        b2 * e1 + d2 * f1 + f2
+    ];
 }
 
-var enhanceContext = function (context) {
-    if (context._enhanced) {
-        context._matrix = [1, 0, 0, 1, 0, 0];
-        context._savedMatrices = [context._matrix];
-        return context;
-    }
-    context._enhanced = true;
-    var m = [1, 0, 0, 1, 0, 0];
-    context._matrix = m;
+(function () {
+    if (typeof CanvasRenderingContext2D === "undefined") return;
+    var proto = CanvasRenderingContext2D.prototype;
+    if (proto._TP_enhanced) return;
+    proto._TP_enhanced = true;
 
-    //the stack of saved matrices
-    context._savedMatrices = [m]; //[[m]];
+    var origSave = proto.save;
+    var origRestore = proto.restore;
+    var origTransform = proto.transform;
+    var origSetTransform = proto.setTransform;
+    var origResetTransform = proto.resetTransform;
 
-    var super_ = context.__proto__;
-    context.__proto__ = ({
-        save: function () {
-            this._savedMatrices.push(this._matrix); //.slice()
-            super_.save.call(this);
-        },
-        //if the stack of matrices we're managing doesn't have a saved matrix,
-        //we won't even call the context's original `restore` method.
-        restore: function () {
-            if (this._savedMatrices.length == 0)
-                return;
-            super_.restore.call(this);
+    proto.save = function () {
+        if (this._enhanced) {
+            this._savedMatrices.push(this._matrix);
+        }
+        return origSave.call(this);
+    };
+
+    proto.restore = function () {
+        if (this._enhanced) {
+            if (this._savedMatrices.length === 0) return;
+            origRestore.call(this);
             this._matrix = this._savedMatrices.pop();
-        },
-        scale: function (x, y) {
-            super_.scale.call(this, x, y);
-        },
-        rotate: function (theta) {
-            super_.rotate.call(this, theta);
-        },
-        translate: function (x, y) {
-            super_.translate.call(this, x, y);
-        },
-        transform: function (a, b, c, d, e, f) {
-            this._matrix = concatMatrix([a, b, c, d, e, f], this._matrix);
-            super_.transform.call(this, a, b, c, d, e, f);
-        },
-        setTransform: function (a, b, c, d, e, f) {
-            this._matrix = [a, b, c, d, e, f];
-            super_.setTransform.call(this, a, b, c, d, e, f);
-        },
-        resetTransform: function () {
-            super_.resetTransform.call(this);
-        },
-        applyTransforms: function (m) {
-            this.setTransform(m[0], m[1], m[2], m[3], m[4], m[5])
-        },
-        applyTransformToPoint: function (p) {
-            var ret = {};
-            ret.x = this._matrix[0] * p.x + this._matrix[2] * p.y + this._matrix[4];
-            ret.y = this._matrix[1] * p.x + this._matrix[3] * p.y + this._matrix[5];
-            return ret;
-        },
-        __proto__: super_
-    });
+            return;
+        }
+        return origRestore.call(this);
+    };
 
+    proto.transform = function (a, b, c, d, e, f) {
+        if (this._enhanced) {
+            var m = this._matrix;
+            this._matrix = [
+                m[0] * a + m[2] * b,
+                m[1] * a + m[3] * b,
+                m[0] * c + m[2] * d,
+                m[1] * c + m[3] * d,
+                m[0] * e + m[2] * f + m[4],
+                m[1] * e + m[3] * f + m[5]
+            ];
+        }
+        return origTransform.call(this, a, b, c, d, e, f);
+    };
+
+    proto.setTransform = function (a, b, c, d, e, f) {
+        if (this._enhanced) {
+            if (a && typeof a === 'object') {
+                this._matrix = [a.a, a.b, a.c, a.d, a.e, a.f];
+            } else {
+                this._matrix = [a, b, c, d, e, f];
+            }
+        }
+        return origSetTransform.apply(this, arguments);
+    };
+
+    proto.resetTransform = function () {
+        if (this._enhanced) {
+            this._matrix = [1, 0, 0, 1, 0, 0];
+        }
+        return origResetTransform ? origResetTransform.call(this) : origSetTransform.call(this, 1, 0, 0, 1, 0, 0);
+    };
+
+    proto.applyTransforms = function (m) {
+        this.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+    };
+
+    proto.applyTransformToPoint = function (p) {
+        var m = this._matrix;
+        return {
+            x: m[0] * p.x + m[2] * p.y + m[4],
+            y: m[1] * p.x + m[3] * p.y + m[5]
+        };
+    };
+})();
+
+var enhanceContext = function (context) {
+    if (!context._enhanced) {
+        context._enhanced = true;
+        if (!context.applyTransforms) {
+            context.applyTransforms = function (m) { this.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]); };
+            context.applyTransformToPoint = function (p) {
+                var m = this._matrix;
+                return { x: m[0] * p.x + m[2] * p.y + m[4], y: m[1] * p.x + m[3] * p.y + m[5] };
+            };
+        }
+    }
+    context._matrix = [1, 0, 0, 1, 0, 0];
+    context._savedMatrices = [];
     return context;
 };
+
 var cxform = function (r_add, g_add, b_add, a_add, r_mult, g_mult, b_mult, a_mult) {
     this.r_add = r_add;
     this.g_add = g_add;
@@ -877,56 +904,76 @@ var cxform = function (r_add, g_add, b_add, a_add, r_mult, g_mult, b_mult, a_mul
     this.g_mult = g_mult;
     this.b_mult = b_mult;
     this.a_mult = a_mult;
-    this._cut = function (v, min, max) {
-        if (v < min)
-            v = min;
-        if (v > max)
-            v = max;
-        return v;
-    };
-    this.apply = function (c) {
-        var d = c;
-        d[0] = this._cut(Math.round(d[0] * this.r_mult / 255 + this.r_add), 0, 255);
-        d[1] = this._cut(Math.round(d[1] * this.g_mult / 255 + this.g_add), 0, 255);
-        d[2] = this._cut(Math.round(d[2] * this.b_mult / 255 + this.b_add), 0, 255);
-        d[3] = this._cut(d[3] * this.a_mult / 255 + this.a_add / 255, 0, 1);
-        return d;
-    };
-    this.applyToImage = function (fimg) {
-        if (this.isEmpty() || !fimg) {
-            return fimg
-        }
-        ;
-        // The same half-alpha cloud or tinted bitmap is rebuilt from scratch
-        // every frame otherwise. Keyed on the image, not this cxform, because
-        // place() allocates a fresh cxform on every call.
-        var key = this.r_add + "," + this.g_add + "," + this.b_add + "," + this.a_add + "," + this.r_mult + "," + this.g_mult + "," + this.b_mult + "," + this.a_mult;
-        var cache = fimg._cxCache;
-        if (cache && cache[key]) return cache[key];
-        if (!cache || Object.keys(cache).length > 48) cache = fimg._cxCache = {};
-        var icanvas = createCanvas(fimg.width, fimg.height);
-        var ictx = icanvas.getContext("2d");
-        ictx.drawImage(fimg, 0, 0);
-        var imdata = ictx.getImageData(0, 0, icanvas.width, icanvas.height);
-        var idata = imdata.data;
-        for (var i = 0; i < idata.length; i += 4) {
-            var c = this.apply([idata[i], idata[i + 1], idata[i + 2], idata[i + 3] / 255]);
-            idata[i] = c[0];
-            idata[i + 1] = c[1];
-            idata[i + 2] = c[2];
-            idata[i + 3] = Math.round(c[3] * 255);
-        }
-        ictx.putImageData(imdata, 0, 0);
-        cache[key] = icanvas;
-        return icanvas;
-    };
-    this.merge = function (cx) {
-        return new cxform(this.r_add + cx.r_add, this.g_add + cx.g_add, this.b_add + cx.b_add, this.a_add + cx.a_add, this.r_mult * cx.r_mult / 255, this.g_mult * cx.g_mult / 255, this.b_mult * cx.b_mult / 255, this.a_mult * cx.a_mult / 255);
-    };
-    this.isEmpty = function () {
-        return this.r_add == 0 && this.g_add == 0 && this.b_add == 0 && this.a_add == 0 && this.r_mult == 255 && this.g_mult == 255 && this.b_mult == 255 && this.a_mult == 255;
-    };
+    this._empty = (r_add === 0 && g_add === 0 && b_add === 0 && a_add === 0 &&
+                   r_mult === 255 && g_mult === 255 && b_mult === 255 && a_mult === 255);
 };
+
+cxform.prototype._cut = function (v, min, max) {
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+};
+
+cxform.prototype.apply = function (c) {
+    if (this._empty) return c;
+    var d = c;
+    d[0] = this._cut(Math.round(d[0] * this.r_mult / 255 + this.r_add), 0, 255);
+    d[1] = this._cut(Math.round(d[1] * this.g_mult / 255 + this.g_add), 0, 255);
+    d[2] = this._cut(Math.round(d[2] * this.b_mult / 255 + this.b_add), 0, 255);
+    d[3] = this._cut(d[3] * this.a_mult / 255 + this.a_add / 255, 0, 1);
+    return d;
+};
+
+cxform.prototype.applyToImage = function (fimg) {
+    if (this._empty || !fimg) {
+        return fimg;
+    }
+    var key = this.r_add + "," + this.g_add + "," + this.b_add + "," + this.a_add + "," +
+              this.r_mult + "," + this.g_mult + "," + this.b_mult + "," + this.a_mult;
+    var cache = fimg._cxCache;
+    if (cache && cache[key]) return cache[key];
+    if (!cache || Object.keys(cache).length > 48) cache = fimg._cxCache = {};
+    var icanvas = createCanvas(fimg.width, fimg.height);
+    var ictx = icanvas.getContext("2d");
+    ictx.drawImage(fimg, 0, 0);
+    var imdata = ictx.getImageData(0, 0, icanvas.width, icanvas.height);
+    var idata = imdata.data;
+    var len = idata.length;
+    var r_mult = this.r_mult, g_mult = this.g_mult, b_mult = this.b_mult, a_mult = this.a_mult;
+    var r_add = this.r_add, g_add = this.g_add, b_add = this.b_add, a_add = this.a_add;
+    for (var i = 0; i < len; i += 4) {
+        var r = Math.round(idata[i] * r_mult / 255 + r_add);
+        var g = Math.round(idata[i + 1] * g_mult / 255 + g_add);
+        var b = Math.round(idata[i + 2] * b_mult / 255 + b_add);
+        var a = Math.round((idata[i + 3] * a_mult / 255 + a_add));
+        idata[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+        idata[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+        idata[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+        idata[i + 3] = a < 0 ? 0 : a > 255 ? 255 : a;
+    }
+    ictx.putImageData(imdata, 0, 0);
+    cache[key] = icanvas;
+    return icanvas;
+};
+
+cxform.prototype.merge = function (cx) {
+    return new cxform(
+        this.r_add + cx.r_add,
+        this.g_add + cx.g_add,
+        this.b_add + cx.b_add,
+        this.a_add + cx.a_add,
+        this.r_mult * cx.r_mult / 255,
+        this.g_mult * cx.g_mult / 255,
+        this.b_mult * cx.b_mult / 255,
+        this.a_mult * cx.a_mult / 255
+    );
+};
+
+cxform.prototype.isEmpty = function () {
+    return this._empty;
+};
+
+var IDENTITY_CXFORM = new cxform(0, 0, 0, 0, 255, 255, 255, 255);
 
 var placeRaw = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time) {
     ctx.save();
@@ -1039,36 +1086,26 @@ var rint = function (v) {
 }
 
 var scaleMatrix = function (m, factorX, factorY) {
-    var scaleX = 0;
-    var rotateSkew0 = 1;
-    var rotateSkew1 = 2;
-    var scaleY = 3;
-    var translateX = 4;
-    var translateY = 5;
-
-    var m2 = Object.assign({}, m);
-
-    m2[scaleX] *= factorX;
-    m2[scaleY] *= factorY;
-    m2[rotateSkew0] *= factorX;
-    m2[rotateSkew1] *= factorY;
-    return m2;
-}
+    return [
+        m[0] * factorX,
+        m[1] * factorX,
+        m[2] * factorY,
+        m[3] * factorY,
+        m[4],
+        m[5]
+    ];
+};
 
 var translateMatrix = function (m, x, y) {
-    var m2 = Object.assign({}, m);
-    var scaleX = 0;
-    var rotateSkew0 = 1;
-    var rotateSkew1 = 2;
-    var scaleY = 3;
-    var translateX = 4;
-    var translateY = 5;
-
-    m2[translateX] = m2[scaleX] * x + m2[rotateSkew1] * y + m2[translateX];
-    m2[translateY] = m2[rotateSkew0] * x + m2[scaleY] * y + m2[translateY];
-
-    return m2;
-}
+    return [
+        m[0],
+        m[1],
+        m[2],
+        m[3],
+        m[0] * x + m[2] * y + m[4],
+        m[1] * x + m[3] * y + m[5]
+    ];
+};
 
 var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time) {
     if ((typeof scalingGrids[obj]) !== "undefined") {
@@ -1081,7 +1118,7 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
 
         var transform2;
         newRect = transformRect(transform, exRect);
-        transform = Object.assign({}, transform);
+        transform = transform.slice();
 
         transform = getTranslateMatrix(newRect.xMin, newRect.yMin);
 
@@ -1110,7 +1147,7 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
         ctx.restore();
 
         //bottom left
-        transform2 = Object.assign({}, transform);
+        transform2 = transform.slice();
         transform2[5] /*translateY*/ += getRectHeight(newRect) - getRectHeight(boundRect) / 20;
 
         ctx.save();
@@ -1126,7 +1163,7 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
         ctx.restore();
 
         //top right
-        transform2 = Object.assign({}, transform);
+        transform2 = transform.slice();
         transform2[4] /*translateX*/ += getRectWidth(newRect) - getRectWidth(boundRect) / 20;
         ctx.save();
         drawPath(ctx, "M " + (newRect.xMax - rint((exRect.xMax - scalingRect.xMax) / 20)) + " " + newRect.yMin + " "
@@ -1140,7 +1177,7 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
         ctx.restore();
 
         //bottom right
-        transform2 = Object.assign({}, transform);
+        transform2 = transform.slice();
         transform2[4] /*translateX*/ += getRectWidth(newRect) - getRectWidth(boundRect) / 20;
         transform2[5] /*translateY*/ += getRectHeight(newRect) - getRectHeight(boundRect) / 20;
         ctx.save();
@@ -1156,7 +1193,7 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
 
 
         //top
-        transform2 = Object.assign({}, transform);
+        transform2 = transform.slice();
         ctx.save();
         transform2 = translateMatrix(transform2, scalingRect.xMin, 0);
         transform2 = scaleMatrix(transform2, scaleX, 1);
@@ -1172,7 +1209,7 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
         ctx.restore();
 
         //left
-        transform2 = Object.assign({}, transform);
+        transform2 = transform.slice();
         ctx.save();
         transform2 = translateMatrix(transform2, 0, scalingRect.yMin);
         transform2 = scaleMatrix(transform2, 1, scaleY);
@@ -1188,7 +1225,7 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
         ctx.restore();
 
         //bottom
-        transform2 = Object.assign({}, transform);
+        transform2 = transform.slice();
         ctx.save();
         transform2 = translateMatrix(transform2, scalingRect.xMin, 0);
         transform2 = scaleMatrix(transform2, scaleX, 1);
@@ -1206,9 +1243,9 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
         ctx.restore();
 
         //right
-        transform2 = Object.assign({}, transform);
+        transform2 = transform.slice();
         ctx.save();
-        transform2 = translateMatrix(transform2, 0, scalingRect.yMin)
+        transform2 = translateMatrix(transform2, 0, scalingRect.yMin);
         transform2 = scaleMatrix(transform2, 1, scaleY);
         transform2 = translateMatrix(transform2, 0, -scalingRect.yMin);
 
@@ -1224,9 +1261,9 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
         ctx.restore();
 
         //center
-        transform2 = Object.assign({}, transform);
+        transform2 = transform.slice();
         ctx.save();
-        transform2 = translateMatrix(transform2, scalingRect.xMin, scalingRect.yMin)
+        transform2 = translateMatrix(transform2, scalingRect.xMin, scalingRect.yMin);
         transform2 = scaleMatrix(transform2, scaleX, scaleY);
         transform2 = translateMatrix(transform2, -scalingRect.xMin, -scalingRect.yMin);
 
@@ -1243,160 +1280,283 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
     placeRaw(obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time);
 }
 
+var _colorCache = {};
 var tocolor = function (c) {
-    var r = "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + c[3] + ")";
-    return r;
+    var a = c[3];
+    if (a === 1) {
+        var key = (c[0] << 16) | (c[1] << 8) | c[2];
+        var cached = _colorCache[key];
+        if (cached !== undefined) return cached;
+        var r = "rgba(" + c[0] + "," + c[1] + "," + c[2] + ",1)";
+        _colorCache[key] = r;
+        return r;
+    }
+    return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")";
 };
 
+var _morphPathCache = new Map();
 
-function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
+function parseMorphPathString(p) {
+    var cached = _morphPathCache.get(p);
+    if (cached) return cached;
+
     var parts = p.split(" ");
     var len = parts.length;
-    if (doStroke) {
-        for (var i = 0; i < len; i++) {
-            switch (parts[i]) {
-                case '':
-                    break;
-                case 'L':
-                case 'M':
-                case 'Q':
-                    break;
-                default:
-                    var k = ctx.applyTransformToPoint({x: parts[i], y: parts[i + 2]});
-                    parts[i] = k.x;
-                    parts[i + 2] = k.y;
-                    k = ctx.applyTransformToPoint({x: parts[i + 1], y: parts[i + 3]});
-                    parts[i + 1] = k.x;
-                    parts[i + 3] = k.y;
-                    i += 3;
-            }
-        }
-
-        switch (scaleMode) {
-            case "NONE":
-                break;
-            case "NORMAL":
-                ctx.lineWidth *= 20 * Math.max(ctx._matrix[0], ctx._matrix[3]);
-                break;
-            case "VERTICAL":
-                ctx.lineWidth *= 20 * ctx._matrix[3];
-                break;
-            case "HORIZONTAL":
-                ctx.lineWidth *= 20 * ctx._matrix[0];
-                break;
-        }
-
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-    ctx.beginPath();
+    var ops = [];
     var drawCommand = "";
     for (var i = 0; i < len; i++) {
-        switch (parts[i]) {
+        var tok = parts[i];
+        switch (tok) {
+            case '':
+                break;
             case 'L':
             case 'M':
             case 'Q':
-                drawCommand = parts[i];
+                drawCommand = tok;
                 break;
             default:
                 switch (drawCommand) {
                     case 'L':
-                        ctx.lineTo(useRatio(parts[i], parts[i + 1], ratio), useRatio(parts[i + 2], parts[i + 3], ratio));
+                        ops.push(1, +tok, +parts[i + 1], +parts[i + 2], +parts[i + 3]);
                         i += 3;
                         break;
                     case 'M':
-                        ctx.moveTo(useRatio(parts[i], parts[i + 1], ratio), useRatio(parts[i + 2], parts[i + 3], ratio));
+                        ops.push(2, +tok, +parts[i + 1], +parts[i + 2], +parts[i + 3]);
                         i += 3;
                         break;
                     case 'Q':
-                        ctx.quadraticCurveTo(useRatio(parts[i], parts[i + 1], ratio), useRatio(parts[i + 2], parts[i + 3], ratio),
-                                useRatio(parts[i + 4], parts[i + 5], ratio), useRatio(parts[i + 6], parts[i + 7], ratio));
+                        ops.push(3, +tok, +parts[i + 1], +parts[i + 2], +parts[i + 3],
+                                    +parts[i + 4], +parts[i + 5], +parts[i + 6], +parts[i + 7]);
                         i += 7;
                         break;
                 }
                 break;
         }
     }
-    if (doStroke) {
-        ctx.stroke();
-        ctx.restore();
-    }
+    cached = { ops: ops };
+    _morphPathCache.set(p, cached);
+    return cached;
 }
 
 function useRatio(v1, v2, ratio) {
-    return v1 * 1 + (v2 - v1) * ratio / 65535;
+    return v1 + (v2 - v1) * (ratio / 65535);
 }
 
-function drawPath(ctx, p, doStroke, scaleMode) {
-//console.log("drawing "+p)
-    var parts = p.split(" ");
-    var len = parts.length;
-    if (doStroke) {
-        for (var i = 0; i < len; i++) {
-            switch (parts[i]) {
-                case 'L':
-                case 'M':
-                case 'Q':
-                case 'Z':
-                    break;
-                default:
-                    var k = ctx.applyTransformToPoint({x: parts[i], y: parts[i + 1]});
-                    parts[i] = k.x;
-                    parts[i + 1] = k.y;
-                    i++;
-            }
-        }
+function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
+    var parsed = parseMorphPathString(p);
+    var ops = parsed.ops;
+    var len = ops.length;
+    var m = ctx._matrix;
 
+    if (doStroke) {
         switch (scaleMode) {
             case "NONE":
                 break;
             case "NORMAL":
-                ctx.lineWidth *= 20 * Math.max(ctx._matrix[0], ctx._matrix[3]);
+                ctx.lineWidth *= 20 * Math.max(m[0], m[3]);
                 break;
             case "VERTICAL":
-                ctx.lineWidth *= 20 * ctx._matrix[3];
+                ctx.lineWidth *= 20 * m[3];
                 break;
             case "HORIZONTAL":
-                ctx.lineWidth *= 20 * ctx._matrix[0];
+                ctx.lineWidth *= 20 * m[0];
                 break;
         }
 
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        ctx.beginPath();
+        var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
+        var rf = ratio / 65535;
+        for (var i = 0; i < len; ) {
+            var cmd = ops[i++];
+            if (cmd === 1) {
+                var lx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                var ly = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                ctx.lineTo(m0 * lx + m2 * ly + m4, m1 * lx + m3 * ly + m5);
+                i += 4;
+            } else if (cmd === 2) {
+                var mx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                var my = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                ctx.moveTo(m0 * mx + m2 * my + m4, m1 * mx + m3 * my + m5);
+                i += 4;
+            } else if (cmd === 3) {
+                var cx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                var cy = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                var qx = ops[i + 4] + (ops[i + 5] - ops[i + 4]) * rf;
+                var qy = ops[i + 6] + (ops[i + 7] - ops[i + 6]) * rf;
+                ctx.quadraticCurveTo(
+                    m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
+                    m0 * qx + m2 * qy + m4, m1 * qx + m3 * qy + m5
+                );
+                i += 8;
+            }
+        }
+        ctx.stroke();
+        ctx.restore();
+        return;
     }
+
     ctx.beginPath();
+    var rf = ratio / 65535;
+    for (var i = 0; i < len; ) {
+        var cmd = ops[i++];
+        if (cmd === 1) {
+            ctx.lineTo(ops[i] + (ops[i + 1] - ops[i]) * rf, ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf);
+            i += 4;
+        } else if (cmd === 2) {
+            ctx.moveTo(ops[i] + (ops[i + 1] - ops[i]) * rf, ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf);
+            i += 4;
+        } else if (cmd === 3) {
+            ctx.quadraticCurveTo(
+                ops[i] + (ops[i + 1] - ops[i]) * rf, ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf,
+                ops[i + 4] + (ops[i + 5] - ops[i + 4]) * rf, ops[i + 6] + (ops[i + 7] - ops[i + 6]) * rf
+            );
+            i += 8;
+        }
+    }
+}
+
+var _parsedPathCache = new Map();
+
+function parsePathString(p) {
+    var cached = _parsedPathCache.get(p);
+    if (cached) return cached;
+
+    var parts = p.split(" ");
+    var len = parts.length;
+    var ops = [];
+    var rawCoords = [];
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    var count = 0;
     var drawCommand = "";
+
+    function addPt(x, y) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+        count++;
+    }
+
     for (var i = 0; i < len; i++) {
-        switch (parts[i]) {
+        var tok = parts[i];
+        switch (tok) {
             case 'L':
             case 'M':
             case 'Q':
-                drawCommand = parts[i];
+                drawCommand = tok;
                 break;
             case 'Z':
-                ctx.closePath();
+                ops.push(0);
                 break;
             default:
                 switch (drawCommand) {
-                    case 'L':
-                        ctx.lineTo(parts[i], parts[i + 1]);
+                    case 'L': {
+                        var x = +tok, y = +parts[i + 1];
+                        ops.push(1, x, y);
+                        addPt(x, y);
+                        rawCoords.push(1, x, y);
                         i++;
                         break;
-                    case 'M':
-                        ctx.moveTo(parts[i], parts[i + 1]);
+                    }
+                    case 'M': {
+                        var x = +tok, y = +parts[i + 1];
+                        ops.push(2, x, y);
+                        addPt(x, y);
+                        rawCoords.push(2, x, y);
                         i++;
                         break;
-                    case 'Q':
-                        ctx.quadraticCurveTo(parts[i], parts[i + 1], parts[i + 2], parts[i + 3]);
+                    }
+                    case 'Q': {
+                        var cx = +tok, cy = +parts[i + 1], x = +parts[i + 2], y = +parts[i + 3];
+                        ops.push(3, cx, cy, x, y);
+                        addPt(cx, cy);
+                        addPt(x, y);
+                        rawCoords.push(3, cx, cy, x, y);
                         i += 3;
                         break;
+                    }
                 }
                 break;
         }
     }
+
+    cached = {
+        ops: ops,
+        rawCoords: rawCoords,
+        minX: minX,
+        minY: minY,
+        maxX: maxX,
+        maxY: maxY,
+        count: count
+    };
+    _parsedPathCache.set(p, cached);
+    return cached;
+}
+
+function drawPath(ctx, p, doStroke, scaleMode) {
+    var parsed = parsePathString(p);
+    var m = ctx._matrix;
+
     if (doStroke) {
+        switch (scaleMode) {
+            case "NONE":
+                break;
+            case "NORMAL":
+                ctx.lineWidth *= 20 * Math.max(m[0], m[3]);
+                break;
+            case "VERTICAL":
+                ctx.lineWidth *= 20 * m[3];
+                break;
+            case "HORIZONTAL":
+                ctx.lineWidth *= 20 * m[0];
+                break;
+        }
+
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        ctx.beginPath();
+        var raw = parsed.rawCoords;
+        var rlen = raw.length;
+        var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
+        for (var j = 0; j < rlen; ) {
+            var op = raw[j++];
+            if (op === 1) {
+                var x = raw[j++], y = raw[j++];
+                ctx.lineTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+            } else if (op === 2) {
+                var x = raw[j++], y = raw[j++];
+                ctx.moveTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+            } else if (op === 3) {
+                var cx = raw[j++], cy = raw[j++], x = raw[j++], y = raw[j++];
+                ctx.quadraticCurveTo(
+                    m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
+                    m0 * x + m2 * y + m4, m1 * x + m3 * y + m5
+                );
+            }
+        }
         ctx.stroke();
         ctx.restore();
+        return;
+    }
+
+    ctx.beginPath();
+    var ops = parsed.ops;
+    var len = ops.length;
+    for (var i = 0; i < len; ) {
+        var op = ops[i++];
+        if (op === 1) {
+            ctx.lineTo(ops[i++], ops[i++]);
+        } else if (op === 2) {
+            ctx.moveTo(ops[i++], ops[i++]);
+        } else if (op === 3) {
+            ctx.quadraticCurveTo(ops[i++], ops[i++], ops[i++], ops[i++]);
+        } else if (op === 0) {
+            ctx.closePath();
+        }
     }
 }
 
@@ -1476,16 +1636,30 @@ function drawPath(ctx, p, doStroke, scaleMode) {
             var clip = this._clipBox;
             var inv = invert(this._matrix);
             if (inv) {
-                var corners = [[clip.minX, clip.minY], [clip.maxX, clip.minY], [clip.minX, clip.maxY], [clip.maxX, clip.maxY]];
+                var cm = clip.m;
                 var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                for (var i = 0; i < 4; i++) {
-                    var d = apply(clip.m, corners[i][0], corners[i][1]);
-                    var u = apply(inv, d[0], d[1]);
-                    if (u[0] < minX) minX = u[0];
-                    if (u[1] < minY) minY = u[1];
-                    if (u[0] > maxX) maxX = u[0];
-                    if (u[1] > maxY) maxY = u[1];
-                }
+                var x0 = clip.minX, y0 = clip.minY, x1 = clip.maxX, y1 = clip.maxY;
+                // Corner 0: (x0, y0)
+                var d0x = cm[0] * x0 + cm[2] * y0 + cm[4], d0y = cm[1] * x0 + cm[3] * y0 + cm[5];
+                var u0x = inv[0] * d0x + inv[2] * d0y + inv[4], u0y = inv[1] * d0x + inv[3] * d0y + inv[5];
+                if (u0x < minX) minX = u0x; if (u0x > maxX) maxX = u0x;
+                if (u0y < minY) minY = u0y; if (u0y > maxY) maxY = u0y;
+                // Corner 1: (x1, y0)
+                var d1x = cm[0] * x1 + cm[2] * y0 + cm[4], d1y = cm[1] * x1 + cm[3] * y0 + cm[5];
+                var u1x = inv[0] * d1x + inv[2] * d1y + inv[4], u1y = inv[1] * d1x + inv[3] * d1y + inv[5];
+                if (u1x < minX) minX = u1x; if (u1x > maxX) maxX = u1x;
+                if (u1y < minY) minY = u1y; if (u1y > maxY) maxY = u1y;
+                // Corner 2: (x0, y1)
+                var d2x = cm[0] * x0 + cm[2] * y1 + cm[4], d2y = cm[1] * x0 + cm[3] * y1 + cm[5];
+                var u2x = inv[0] * d2x + inv[2] * d2y + inv[4], u2y = inv[1] * d2x + inv[3] * d2y + inv[5];
+                if (u2x < minX) minX = u2x; if (u2x > maxX) maxX = u2x;
+                if (u2y < minY) minY = u2y; if (u2y > maxY) maxY = u2y;
+                // Corner 3: (x1, y1)
+                var d3x = cm[0] * x1 + cm[2] * y1 + cm[4], d3y = cm[1] * x1 + cm[3] * y1 + cm[5];
+                var u3x = inv[0] * d3x + inv[2] * d3y + inv[4], u3y = inv[1] * d3x + inv[3] * d3y + inv[5];
+                if (u3x < minX) minX = u3x; if (u3x > maxX) maxX = u3x;
+                if (u3y < minY) minY = u3y; if (u3y > maxY) maxY = u3y;
+
                 var pad = 2;
                 var rw = maxX - minX + pad * 2;
                 var rh = maxY - minY + pad * 2;
