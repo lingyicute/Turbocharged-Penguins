@@ -33793,7 +33793,10 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
     }
 
     advance() {
-      for (const clip of [...this.clips.values()]) {
+      // Frame scripts only mutate existing clips or queue pending requests; they
+      // never add/delete entries here. Iterate the map directly to avoid an
+      // array snapshot allocation on every timeline tick.
+      for (const clip of this.clips.values()) {
         if (clip.id === 25) {
           if (clip.delay > 0 && --clip.delay === 0) {
             clip.playing = false;
@@ -33827,6 +33830,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const EFFECT_IDS = [3, 4, 6, 87, 94, 95, 96, 164, 299, 300, 308, 315, 373, 374, 375, 377, 381, 401, 417];
+  const EFFECT_ID_SET = new Set(EFFECT_IDS);
   // MP3 encoder delay, in seconds (samples / native rate). Skipping it keeps
   // accents from landing ~75ms late.
   const SEEK_SEC = {
@@ -33850,6 +33854,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       this.effects = new Set();
       this.audioContext = null;
       this.buffers = new Map();
+      this.effectLoads = new Map();
       this.musicStarted = false;
       this.sting = null;
       this.stingGain = null;
@@ -33858,9 +33863,10 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       this.stingPending = false;
       this.stingStarted = 0;
 
-      this.music = new Audio(urlFor(1));
+      this.music = new Audio();
       this.music.loop = true;
-      this.music.preload = 'auto';
+      // Avoid downloading the fallback track while Web Audio is in use.
+      this.music.preload = 'none';
       this.music.volume = 0;
       this.bed = null;
       this.bedGain = null;
@@ -33872,17 +33878,9 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         if (AC) this.audioContext = new AC();
       } catch (_) {}
 
-      this.loadStingBuffer();
-
-      if (this.audioContext) {
-        for (const id of EFFECT_IDS) {
-          fetch(urlFor(id))
-            .then(r => r.arrayBuffer())
-            .then(buf => this.audioContext.decodeAudioData(buf))
-            .then(decoded => this.buffers.set(id, this.skipSeek(id, decoded)))
-            .catch(() => {});
-        }
-      }
+      // Music and effects are fetched only when they can actually be used.
+      // The intro bed/sting starts loading from ensureMusic()/playIntroSting();
+      // one-shot effects are decoded on their first cue.
     }
 
     unlock() {
@@ -33916,6 +33914,8 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
     startFallbackMusic() {
       this.bedPending = false;
       this.musicStarted = true;
+      this.music.preload = 'auto';
+      if (!this.music.src) this.music.src = urlFor(1);
       try {
         Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; });
       } catch (_) {
@@ -34117,6 +34117,20 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       try { sting.stop(); } catch (_) {}
     }
 
+    loadEffect(id) {
+      const context = this.audioContext;
+      if (!context || !EFFECT_ID_SET.has(id) || this.buffers.has(id) || this.effectLoads.has(id)) return;
+      const pending = fetch(urlFor(id))
+        .then(r => r.arrayBuffer())
+        .then(buf => context.decodeAudioData(buf))
+        .then(decoded => {
+          if (this.audioContext === context) this.buffers.set(id, this.skipSeek(id, decoded));
+        })
+        .catch(() => {})
+        .finally(() => this.effectLoads.delete(id));
+      this.effectLoads.set(id, pending);
+    }
+
     effect(id, volume = 0.75) {
       if (id === 1) {
         this.ensureMusic();
@@ -34134,6 +34148,9 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
           return;
         } catch (_) {}
       }
+      // Keep the first cue responsive with the media-element fallback while
+      // decoding a reusable Web Audio buffer for future plays.
+      if (this.audioContext) this.loadEffect(id);
       try {
         const audio = new Audio(urlFor(id));
         audio.volume = clamp(volume, 0, 1);
@@ -34362,7 +34379,10 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       for (const [n,tile] of g.tiles) {
         for (const b of tile.bonuses) {
           if (b.collected) continue;
-          const {x:bx, y:by} = Physics.bonusStageCenter(g, n, b);
+          // Inline the center math in this high-frequency loop; allocating a
+          // temporary point object for every candidate bonus is unnecessary.
+          const bx = g.bgX + b.x + BONUS_CENTER_OFFSET;
+          const by = g.bgY - n * CONFIG.cliffTileHeight + b.y + BONUS_CENTER_OFFSET;
           const dx=(g.x-bx)/36, dy=(g.y-by)/48;
           if (g.y>-10 && dx*dx+dy*dy<1) {
             Physics.collectBonus(b, g, audio);
@@ -34586,7 +34606,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         this.rasters.clear();
         this.rasterPixels = 0;
       }
-      if (this.app) this.app.lastStamp = '';
+      if (this.app) this.app.forceRender = true;
     }
 
     // Device pixels per local unit, after the current transform and this place.
@@ -35119,6 +35139,11 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       this.now = performance.now();
       this.pointer = {x: W/2, y: H/2};
       this.pressed = null;
+      // Reuse two snapshots instead of allocating/joining a large stamp string
+      // on every display refresh.
+      this.visualParts = [[], []];
+      this.visualPartIndex = 0;
+      this.forceRender = false;
       this.timeline = new window.ClipTimelines(this);
       this.renderer = new window.OriginalArtRenderer(this);
       this.launchReady = false;
@@ -35228,37 +35253,50 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
         }
         if (steps > 7) this.physAcc = 0;
       } else this.physAcc = 0;
-      const stamp = this.visualStamp();
-      if (stamp !== this.lastStamp) {
+      if (this.forceRender || this.visualStateChanged()) {
+        this.forceRender = false;
         this.renderer.render();
-        // Rendering creates clips the pre-render stamp did not yet include.
-        this.lastStamp = this.visualStamp();
+        // Rendering creates clips the pre-render state did not yet include.
+        this.visualStateChanged();
       }
       requestAnimationFrame(t => this.loop(t));
     }
 
-    // Idle screens (tap-to-start, how-to, result) used to repaint the whole
-    // vector scene on every display refresh. Redraw only
-    // when a clip, the camera, or a fading bonus actually changed.
-    visualStamp() {
+    // Idle screens (tap-to-start, how-to, result) redraw only when a clip, the
+    // camera, or a fading bonus changes. Compare into reusable arrays instead
+    // of allocating a parts array and joining a potentially large string on
+    // every display refresh.
+    visualStateChanged() {
+      const previous = this.visualParts[this.visualPartIndex];
+      const current = this.visualParts[this.visualPartIndex ^ 1];
       const g = this.game;
-      const parts = [this.rootFrame, this.panelFrame, this.mode, this.audio.muted ? 1 : 0, this.displayCm, this.launchDx || 0];
+      current.length = 0;
+      current.push(this.rootFrame, this.panelFrame, this.mode, this.audio.muted ? 1 : 0,
+        this.displayCm, this.launchDx || 0);
       if (g) {
-        parts.push(g.x, g.y, g.bgX, g.bgY, g.farX, g.farY, g.rotation, g.cm, g.vy, g.turbos,
+        current.push(g.x, g.y, g.bgX, g.bgY, g.farX, g.farY, g.rotation, g.cm, g.vy, g.turbos,
           g.anim, g.pengFrame, g.explX, g.explY, g.dummyX, g.dummyY,
           g.pointerStatus ? 1 : 0, g.turboClickedToggle ? 1 : 0);
         if (g.tiles) {
           for (const tile of g.tiles.values()) {
             for (const b of tile.bonuses) {
               if (b.collected && this.now - b.collected < 600)
-                parts.push('f', b.x, (this.now - b.collected) | 0);
+                current.push('f', b.x, (this.now - b.collected) | 0);
             }
           }
         }
       }
       for (const clip of this.timeline.clips.values())
-        parts.push(clip.id, clip.frame, clip.playing ? 1 : 0);
-      return parts.join(',');
+        current.push(clip.id, clip.frame, clip.playing ? 1 : 0);
+
+      let changed = current.length !== previous.length;
+      if (!changed) {
+        for (let i = 0; i < current.length; i++) {
+          if (current[i] !== previous[i]) { changed = true; break; }
+        }
+      }
+      this.visualPartIndex ^= 1;
+      return changed;
     }
 
     advanceFrame() {

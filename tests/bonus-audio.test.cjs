@@ -23,7 +23,7 @@ async function createApp() {
   const window = {
     addEventListener(event, callback) { if (event === 'load') onload = callback; },
     GameAudio: class { constructor() { this.unlocked = true; this.muted = false; } effect() {} },
-    ClipTimelines: class {},
+    ClipTimelines: class { constructor() { this.clips = new Map(); } },
     OriginalArtRenderer: class {}
   };
   const context = vm.createContext({
@@ -44,6 +44,53 @@ async function createApp() {
   await nextTick();
   return {app: window.TurboPenguins, Physics: window.Physics};
 }
+
+test('timeline advances existing clips and queues newly requested children', () => {
+  const window = {FRAME_SOUNDS: {}};
+  const context = vm.createContext({window});
+  loadSource(context, 'timeline.js');
+  const app = {mode: 'playing', game: {x: 12, y: 34}, audio: {effect() {}}};
+  const timeline = new window.ClipTimelines(app);
+  const penguin = {
+    path: 'root/sprite568#0/sprite565#0', parentPath: 'root/sprite568#0',
+    parentId: 568, id: 565, frame: 200, length: 219, playing: true, soundedFrame: 0
+  };
+  timeline.clips.set(penguin.path, penguin);
+
+  timeline.advance();
+  assert.equal(penguin.frame, 201);
+  assert.equal(app.game.explX, 12);
+  assert.equal(app.game.explY, 34);
+  assert.equal(timeline.clips.size, 1, 'frame scripts do not insert into the iterated clip map');
+  assert.equal(timeline.pending.length, 1, 'missing child clips are queued for rendering');
+});
+
+test('visual state comparison reuses buffers and detects gameplay, clip, and fade changes', async () => {
+  const {app, Physics} = await createApp();
+  const buffers = new Set(app.visualParts);
+
+  assert.equal(app.visualStateChanged(), true, 'initial state needs a paint');
+  assert.equal(app.visualStateChanged(), false, 'unchanged state is skipped');
+  assert.equal(new Set(app.visualParts).size, 2, 'only two reusable snapshots are used');
+  for (const buffer of buffers) assert.ok(app.visualParts.includes(buffer));
+
+  const g = app.game = Physics.createInitialGame(1);
+  assert.equal(app.visualStateChanged(), true, 'entering gameplay changes the view');
+  assert.equal(app.visualStateChanged(), false);
+  g.x++;
+  assert.equal(app.visualStateChanged(), true, 'camera/gameplay movement changes the view');
+
+  const clip = {id: 900, frame: 1, playing: true};
+  app.timeline.clips.set('root/sprite900#0', clip);
+  assert.equal(app.visualStateChanged(), true, 'new timeline clips change the view');
+  clip.frame++;
+  assert.equal(app.visualStateChanged(), true, 'clip frames are tracked');
+
+  g.tiles.set(1, {bonuses: [{x: 100, collected: app.now - 100}]});
+  assert.equal(app.visualStateChanged(), true, 'a fading pickup changes the view');
+  app.now++;
+  assert.equal(app.visualStateChanged(), true, 'pickup alpha is tracked over time');
+});
 
 test('clicking and flying through the visible center of each bonus collects it', async () => {
   const {app, Physics} = await createApp();
@@ -97,8 +144,39 @@ function createAudio(fetchSound, playMusic, decodeSound = () => Promise.resolve(
   return {GameAudio: window.GameAudio, plays: () => plays, bedStarts: () => bedStarts};
 }
 
-// An effect preload also calls fetch(), so isolate sound 1 in each test.
+// Keep music and one-shot effect request assertions independent.
 const isMusic = url => url === 'assets/audio/1.mp3';
+
+test('one-shot buffers load on demand while the first cue uses the immediate fallback', async () => {
+  const first = deferred();
+  let musicRequests = 0;
+  let effectRequests = 0;
+  const {GameAudio, plays, bedStarts} = createAudio(url => {
+    if (isMusic(url)) {
+      musicRequests++;
+      return Promise.reject(new Error('music should not load yet'));
+    }
+    effectRequests++;
+    return first.promise;
+  }, () => Promise.resolve());
+  const audio = new GameAudio();
+
+  assert.equal(musicRequests, 0, 'constructing the manager does not fetch music');
+  assert.equal(effectRequests, 0, 'constructing the manager performs no effect fetches');
+  audio.effect(87);
+  assert.equal(effectRequests, 1);
+  assert.equal(plays(), 1, 'the first cue starts without waiting for decode');
+  audio.effect(87);
+  assert.equal(effectRequests, 1, 'concurrent cues share the in-flight decode');
+  assert.equal(plays(), 2);
+
+  first.resolve({arrayBuffer: () => Promise.resolve(new ArrayBuffer(1))});
+  await nextTick();
+  assert.ok(audio.buffers.has(87));
+  audio.effect(87);
+  assert.equal(bedStarts(), 1, 'later cues use the decoded Web Audio buffer');
+  assert.equal(plays(), 2);
+});
 
 test('successful Web Audio loading starts one bed and clears the pending state', async () => {
   const first = deferred();
@@ -174,8 +252,10 @@ test('without Web Audio, unlocking starts the media element directly', async () 
   const context = vm.createContext({window, Audio: FakeAudio});
   loadSource(context, 'audio.js');
   const audio = new window.GameAudio();
+  assert.ok(!audio.music.src, 'fallback music has no source until playback is needed');
   audio.unlock();
   await nextTick();
+  assert.equal(audio.music.src, 'assets/audio/1.mp3');
   assert.equal(plays, 1);
   assert.equal(audio.musicStarted, true);
 });

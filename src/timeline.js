@@ -307,7 +307,10 @@
     }
 
     advance() {
-      for (const clip of [...this.clips.values()]) {
+      // Frame scripts only mutate existing clips or queue pending requests; they
+      // never add/delete entries here. Iterate the map directly to avoid an
+      // array snapshot allocation on every timeline tick.
+      for (const clip of this.clips.values()) {
         if (clip.id === 25) {
           if (clip.delay > 0 && --clip.delay === 0) {
             clip.playing = false;
