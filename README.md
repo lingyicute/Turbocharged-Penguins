@@ -1,6 +1,17 @@
-# Turbocharged Penguins
+<br>
+<br>
+<br>
+<br>
+<p align="center">
+  <img src="screenshot.webp" alt="Turbocharged Penguins" width="420">
+</p>
+<h3 align="center">Turbocharged Penguins – Revived in Pure JavaScript！</h1>
+<p align="center">Made with ❤️ by <a href="https://github.com/lingyicute">lingyicute</a></p>
+<br>
+<br>
+<br>
 
-  <img src="screenshot.webp" alt="Turbocharged Penguins" width="620">
+## About
 
 An unofficial, faithful HTML5 remake of the 2006 Flash game **Turbocharged Penguins** — a one-button arcade game about launching a penguin into the sky and keeping it airborne by clicking it mid-flight.
 
