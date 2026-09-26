@@ -459,7 +459,8 @@
         for (const [n,tile] of g.tiles) {
           for (const b of tile.bonuses) {
             if (b.collected) continue;
-            if (Math.hypot(x-(g.bgX+b.x),y-(g.bgY-n*445+b.y)) < 36) return b;
+            const center = window.Physics.bonusStageCenter(g, n, b);
+            if (Math.hypot(x-center.x, y-center.y) < 36) return b;
           }
         }
         // button567 is hit-only (shape 566). Its stage rect, from the exported

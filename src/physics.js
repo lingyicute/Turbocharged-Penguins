@@ -6,6 +6,9 @@
   'use strict';
 
   const W = 620, H = 360;
+  // All sprite509 bonus icons are centered at (662, 662) in the exported art;
+  // drawTiles() places the sprite at scale 0.05 using b.x/b.y as its origin.
+  const BONUS_CENTER_OFFSET = 662 * 0.05;
   const rand = n => Math.floor(Math.random() * Math.max(1, n));
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -161,6 +164,13 @@
       }
     }
 
+    static bonusStageCenter(g, n, b) {
+      return {
+        x: g.bgX + b.x + BONUS_CENTER_OFFSET,
+        y: g.bgY - n * CONFIG.cliffTileHeight + b.y + BONUS_CENTER_OFFSET
+      };
+    }
+
     static hitTests(g, audio) {
       const inCliff = Math.floor((g.bgY - g.y) / CONFIG.cliffTileHeight) <= CONFIG.maxCliffTiles;
       // A wall hit plays sound 3 now and sound 4 seven frames later.
@@ -175,7 +185,7 @@
       for (const [n,tile] of g.tiles) {
         for (const b of tile.bonuses) {
           if (b.collected) continue;
-          const bx=g.bgX+b.x, by=g.bgY-n*CONFIG.cliffTileHeight+b.y;
+          const {x:bx, y:by} = Physics.bonusStageCenter(g, n, b);
           const dx=(g.x-bx)/36, dy=(g.y-by)/48;
           if (g.y>-10 && dx*dx+dy*dy<1) {
             Physics.collectBonus(b, g, audio);
