@@ -185,7 +185,10 @@
       for (const [n,tile] of g.tiles) {
         for (const b of tile.bonuses) {
           if (b.collected) continue;
-          const {x:bx, y:by} = Physics.bonusStageCenter(g, n, b);
+          // Inline the center math in this high-frequency loop; allocating a
+          // temporary point object for every candidate bonus is unnecessary.
+          const bx = g.bgX + b.x + BONUS_CENTER_OFFSET;
+          const by = g.bgY - n * CONFIG.cliffTileHeight + b.y + BONUS_CENTER_OFFSET;
           const dx=(g.x-bx)/36, dy=(g.y-by)/48;
           if (g.y>-10 && dx*dx+dy*dy<1) {
             Physics.collectBonus(b, g, audio);

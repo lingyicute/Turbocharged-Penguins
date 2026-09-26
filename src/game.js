@@ -41,6 +41,11 @@
       this.now = performance.now();
       this.pointer = {x: W/2, y: H/2};
       this.pressed = null;
+      // Reuse two snapshots instead of allocating/joining a large stamp string
+      // on every display refresh.
+      this.visualParts = [[], []];
+      this.visualPartIndex = 0;
+      this.forceRender = false;
       this.timeline = new window.ClipTimelines(this);
       this.renderer = new window.OriginalArtRenderer(this);
       this.launchReady = false;
@@ -150,37 +155,50 @@
         }
         if (steps > 7) this.physAcc = 0;
       } else this.physAcc = 0;
-      const stamp = this.visualStamp();
-      if (stamp !== this.lastStamp) {
+      if (this.forceRender || this.visualStateChanged()) {
+        this.forceRender = false;
         this.renderer.render();
-        // Rendering creates clips the pre-render stamp did not yet include.
-        this.lastStamp = this.visualStamp();
+        // Rendering creates clips the pre-render state did not yet include.
+        this.visualStateChanged();
       }
       requestAnimationFrame(t => this.loop(t));
     }
 
-    // Idle screens (tap-to-start, how-to, result) used to repaint the whole
-    // vector scene on every display refresh. Redraw only
-    // when a clip, the camera, or a fading bonus actually changed.
-    visualStamp() {
+    // Idle screens (tap-to-start, how-to, result) redraw only when a clip, the
+    // camera, or a fading bonus changes. Compare into reusable arrays instead
+    // of allocating a parts array and joining a potentially large string on
+    // every display refresh.
+    visualStateChanged() {
+      const previous = this.visualParts[this.visualPartIndex];
+      const current = this.visualParts[this.visualPartIndex ^ 1];
       const g = this.game;
-      const parts = [this.rootFrame, this.panelFrame, this.mode, this.audio.muted ? 1 : 0, this.displayCm, this.launchDx || 0];
+      current.length = 0;
+      current.push(this.rootFrame, this.panelFrame, this.mode, this.audio.muted ? 1 : 0,
+        this.displayCm, this.launchDx || 0);
       if (g) {
-        parts.push(g.x, g.y, g.bgX, g.bgY, g.farX, g.farY, g.rotation, g.cm, g.vy, g.turbos,
+        current.push(g.x, g.y, g.bgX, g.bgY, g.farX, g.farY, g.rotation, g.cm, g.vy, g.turbos,
           g.anim, g.pengFrame, g.explX, g.explY, g.dummyX, g.dummyY,
           g.pointerStatus ? 1 : 0, g.turboClickedToggle ? 1 : 0);
         if (g.tiles) {
           for (const tile of g.tiles.values()) {
             for (const b of tile.bonuses) {
               if (b.collected && this.now - b.collected < 600)
-                parts.push('f', b.x, (this.now - b.collected) | 0);
+                current.push('f', b.x, (this.now - b.collected) | 0);
             }
           }
         }
       }
       for (const clip of this.timeline.clips.values())
-        parts.push(clip.id, clip.frame, clip.playing ? 1 : 0);
-      return parts.join(',');
+        current.push(clip.id, clip.frame, clip.playing ? 1 : 0);
+
+      let changed = current.length !== previous.length;
+      if (!changed) {
+        for (let i = 0; i < current.length; i++) {
+          if (current[i] !== previous[i]) { changed = true; break; }
+        }
+      }
+      this.visualPartIndex ^= 1;
+      return changed;
     }
 
     advanceFrame() {

@@ -12,6 +12,7 @@
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const EFFECT_IDS = [3, 4, 6, 87, 94, 95, 96, 164, 299, 300, 308, 315, 373, 374, 375, 377, 381, 401, 417];
+  const EFFECT_ID_SET = new Set(EFFECT_IDS);
   // MP3 encoder delay, in seconds (samples / native rate). Skipping it keeps
   // accents from landing ~75ms late.
   const SEEK_SEC = {
@@ -35,6 +36,7 @@
       this.effects = new Set();
       this.audioContext = null;
       this.buffers = new Map();
+      this.effectLoads = new Map();
       this.musicStarted = false;
       this.sting = null;
       this.stingGain = null;
@@ -43,9 +45,10 @@
       this.stingPending = false;
       this.stingStarted = 0;
 
-      this.music = new Audio(urlFor(1));
+      this.music = new Audio();
       this.music.loop = true;
-      this.music.preload = 'auto';
+      // Avoid downloading the fallback track while Web Audio is in use.
+      this.music.preload = 'none';
       this.music.volume = 0;
       this.bed = null;
       this.bedGain = null;
@@ -57,17 +60,9 @@
         if (AC) this.audioContext = new AC();
       } catch (_) {}
 
-      this.loadStingBuffer();
-
-      if (this.audioContext) {
-        for (const id of EFFECT_IDS) {
-          fetch(urlFor(id))
-            .then(r => r.arrayBuffer())
-            .then(buf => this.audioContext.decodeAudioData(buf))
-            .then(decoded => this.buffers.set(id, this.skipSeek(id, decoded)))
-            .catch(() => {});
-        }
-      }
+      // Music and effects are fetched only when they can actually be used.
+      // The intro bed/sting starts loading from ensureMusic()/playIntroSting();
+      // one-shot effects are decoded on their first cue.
     }
 
     unlock() {
@@ -101,6 +96,8 @@
     startFallbackMusic() {
       this.bedPending = false;
       this.musicStarted = true;
+      this.music.preload = 'auto';
+      if (!this.music.src) this.music.src = urlFor(1);
       try {
         Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; });
       } catch (_) {
@@ -302,6 +299,20 @@
       try { sting.stop(); } catch (_) {}
     }
 
+    loadEffect(id) {
+      const context = this.audioContext;
+      if (!context || !EFFECT_ID_SET.has(id) || this.buffers.has(id) || this.effectLoads.has(id)) return;
+      const pending = fetch(urlFor(id))
+        .then(r => r.arrayBuffer())
+        .then(buf => context.decodeAudioData(buf))
+        .then(decoded => {
+          if (this.audioContext === context) this.buffers.set(id, this.skipSeek(id, decoded));
+        })
+        .catch(() => {})
+        .finally(() => this.effectLoads.delete(id));
+      this.effectLoads.set(id, pending);
+    }
+
     effect(id, volume = 0.75) {
       if (id === 1) {
         this.ensureMusic();
@@ -319,6 +330,9 @@
           return;
         } catch (_) {}
       }
+      // Keep the first cue responsive with the media-element fallback while
+      // decoding a reusable Web Audio buffer for future plays.
+      if (this.audioContext) this.loadEffect(id);
       try {
         const audio = new Audio(urlFor(id));
         audio.volume = clamp(volume, 0, 1);

@@ -67,7 +67,7 @@
         this.rasters.clear();
         this.rasterPixels = 0;
       }
-      if (this.app) this.app.lastStamp = '';
+      if (this.app) this.app.forceRender = true;
     }
 
     // Device pixels per local unit, after the current transform and this place.
