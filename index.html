@@ -34785,9 +34785,13 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       return adv;
     }
     // Record, or the empty-state line, in the open area under the title.
+    // sprite127 is on the menu and inside the Awesome panel (sprite189).
+    // saveBest has already replaced storedBest, so that panel keeps the
+    // record this run broke.
     leaderboardValue(ctx, ctrans) {
       const col = window.tocolor(ctrans.apply([145, 24, 118, 1]));
-      const best = this.app.storedBest || 0;
+      const onAwesome = this.app.timeline.parent()?.id === 189;
+      const best = (onAwesome ? this.app.beatenBest : this.app.storedBest) || 0;
       if (best > 12000) {
         const size = 1.05;
         const adv = this.scaledAdv(FONT89_ADV, size);
@@ -35081,6 +35085,7 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       this.panelGoto = 0;
       this.selected = 1;
       this.storedBest = this.readBest();
+      this.beatenBest = this.storedBest;
       this.lastTime = 0;
       this.frameAcc = 0;
       this.physAcc = 0;
@@ -35335,6 +35340,9 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       const g=this.game;
       if (!g || this.mode!=='playing') return;
       const previous=this.storedBest;
+      // Captured before saveBest. The Awesome panel's leaderboard shows this,
+      // not the record this run just wrote.
+      this.beatenBest = previous;
       g.finalScore=scoreString(g.cm);
       g.turbos=0;
       this.timeline.requestPlay('root/sprite553#0', null, true);

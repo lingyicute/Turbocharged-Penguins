@@ -34,6 +34,7 @@
       this.panelGoto = 0;
       this.selected = 1;
       this.storedBest = this.readBest();
+      this.beatenBest = this.storedBest;
       this.lastTime = 0;
       this.frameAcc = 0;
       this.physAcc = 0;
@@ -288,6 +289,9 @@
       const g=this.game;
       if (!g || this.mode!=='playing') return;
       const previous=this.storedBest;
+      // Captured before saveBest. The Awesome panel's leaderboard shows this,
+      // not the record this run just wrote.
+      this.beatenBest = previous;
       g.finalScore=scoreString(g.cm);
       g.turbos=0;
       this.timeline.requestPlay('root/sprite553#0', null, true);
