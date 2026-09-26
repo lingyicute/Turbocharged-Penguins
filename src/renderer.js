@@ -293,9 +293,13 @@
       return adv;
     }
     // Record, or the empty-state line, in the open area under the title.
+    // sprite127 is on the menu and inside the Awesome panel (sprite189).
+    // saveBest has already replaced storedBest, so that panel keeps the
+    // record this run broke.
     leaderboardValue(ctx, ctrans) {
       const col = window.tocolor(ctrans.apply([145, 24, 118, 1]));
-      const best = this.app.storedBest || 0;
+      const onAwesome = this.app.timeline.parent()?.id === 189;
+      const best = (onAwesome ? this.app.beatenBest : this.app.storedBest) || 0;
       if (best > 12000) {
         const size = 1.05;
         const adv = this.scaledAdv(FONT89_ADV, size);
