@@ -1,0 +1,36 @@
+Turbocharged Penguins — unofficial HTML5 fan remake
+Copyright (c) 2026 lingyicute
+
+SCOPE OF LICENSE
+================
+The AGPL3.0 license in LICENSE applies only to the original code in this
+repository:
+
+    src/                 all files
+    tests/               all files
+    build_singlefile.py
+    dev.html             (as code)
+
+The game logic constants and frame tables are an independent
+reimplementation of gameplay mechanics, which are not subject to
+copyright; the literal expression has been rewritten.
+
+THIRD-PARTY MATERIAL (NOT covered by the AGPL3.0 license)
+=====================================================
+This project is a fan remake of the Flash game "Turbocharged
+Penguins" (released October 2006, distributed via Optus Pre-Paid).
+The following material was extracted from that original game, and
+all rights remain with their original owners:
+
+    assets/f-art.js      vector artwork exported from the original SWF
+    assets/audio/        all .mp3 / .wav sound files
+    index.html           embeds the above in base64 form
+
+The name "Turbocharged Penguins" and the character artwork are used
+solely to identify the original work being preserved. This project
+is not affiliated with or endorsed by the original rights holders.
+The material is included for non-commercial archival and educational
+purposes as part of Flash-game preservation.
+
+If you hold rights to any of this material and would like it removed,
+please contact lingyicute@gmail.com — it will be removed promptly.

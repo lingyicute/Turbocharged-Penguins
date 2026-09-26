@@ -34216,6 +34216,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       const canvas = this.canvas;
       const rect = canvas.getBoundingClientRect();
       if (rect.width < 2 || rect.height < 2) return;
+      // Preserve native display resolution: never cap DPR or backing pixels.
       const dpr = window.devicePixelRatio || 1;
       const w = Math.max(1, Math.round(rect.width * dpr));
       const h = Math.max(1, Math.round(rect.height * dpr));
