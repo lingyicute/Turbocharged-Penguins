@@ -56,6 +56,7 @@
       const canvas = this.canvas;
       const rect = canvas.getBoundingClientRect();
       if (rect.width < 2 || rect.height < 2) return;
+      // Preserve native display resolution: never cap DPR or backing pixels.
       const dpr = window.devicePixelRatio || 1;
       const w = Math.max(1, Math.round(rect.width * dpr));
       const h = Math.max(1, Math.round(rect.height * dpr));
@@ -173,7 +174,7 @@
     // and blit. Skip non-uniform scales, blend modes, and destination-in:
     // a cached bitmap's transparent pad would erase mask pixels.
     tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio) {
-      if (this.rasterizing) return false;
+      if (!ctx || this.rasterizing || ctx._floeMaskPathOnly) return false;
       if (!obj || (!obj.startsWith('shape') && !obj.startsWith('image') && !obj.startsWith('morphshape')))
         return false;
       if (blend > 1) return false;
@@ -184,6 +185,10 @@
       if (!this.imagesReady(obj)) return false;
       const scale = this.getDeviceScale(ctx, matrix);
       if (!scale) return false;
+      // Exported shape/image functions do not read frame, ratio or time.
+      // Placement ratios change each intro tick; including them duplicated
+      // identical bitmaps and evicted useful entries during the first seconds.
+      if (!obj.startsWith('morphshape')) { frame = 0; ratio = 0; }
       const scaleKey = Math.round(scale * 1000) / 1000;
       const ratioKey = ratio == null ? 0 : Math.round(ratio * 1000) / 1000;
       const key = obj + '|' + (frame ?? 0) + '|' + ratioKey + '|' + this.cxKey(ctrans) + '|' + scaleKey;
