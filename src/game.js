@@ -13,6 +13,7 @@
   });
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const scoreString = cm => (Math.max(0, cm) / 100).toFixed(2) + 'm';
+  const SINGLE_CUE_IDS = Object.freeze(new Set([5, 7, 294, 382, 402, 403, 418, 423, 550, 553, 555, 565, 569, 578, 579]));
 
   class TurboPenguins {
     constructor() {
@@ -99,20 +100,25 @@
     flushCues() {
       const g = this.game;
       if (!g || !g.cues || !g.cues.length) return;
-      // These stage objects appear once. Bonus clips are not in this set;
-      // their paths are stashed on the bonus during render.
-      const single = new Set([5, 7, 294, 382, 402, 403, 418, 423, 550, 553, 555, 565, 569, 578, 579]);
-      for (const cue of g.cues) {
+      const cues = g.cues;
+      const clen = cues.length;
+      for (let i = 0; i < clen; i++) {
+        const cue = cues[i];
         if (cue.op === 'play') {
           let path = cue.path;
-          const ids = path ? [...path.matchAll(/sprite(\d+)/g)] : [];
-          const id = ids.length ? Number(ids[ids.length - 1][1]) : 0;
-          const ref = single.has(id) ? this.timeline.byId.get(id) : null;
+          let id = 0;
+          if (path) {
+            const idx = path.lastIndexOf('sprite');
+            if (idx !== -1) {
+              id = parseInt(path.slice(idx + 6), 10) || 0;
+            }
+          }
+          const ref = SINGLE_CUE_IDS.has(id) ? this.timeline.byId.get(id) : null;
           if (ref && this.timeline.clips.has(ref.path)) path = ref.path;
           this.timeline.requestPlay(path, cue.frame, cue.playing !== false);
         } else if (cue.op === 'sound') this.audio.effect(cue.id, cue.volume ?? 0.75);
       }
-      g.cues.length = 0;
+      cues.length = 0;
     }
 
     penguinClip(n) {
