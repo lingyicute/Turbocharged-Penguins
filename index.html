@@ -33903,13 +33903,23 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       if (!this.unlocked || this.musicStarted) return;
       this.musicStarted = true;
       if (!this.audioContext) {
-        this.music.play().catch(() => { this.musicStarted = false; });
+        this.startFallbackMusic();
         return;
       }
       if (this.bedBuffer) this.startBed();
       else {
         this.bedPending = true;
         this.loadStingBuffer();
+      }
+    }
+
+    startFallbackMusic() {
+      this.bedPending = false;
+      this.musicStarted = true;
+      try {
+        Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; });
+      } catch (_) {
+        this.musicStarted = false;
       }
     }
 
@@ -33924,11 +33934,11 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       gain.gain.value = 0;
       this.bed = src;
       this.bedGain = gain;
-      try { src.start(); }
+      try { src.start(); this.bedPending = false; }
       catch (_) {
         this.bed = null;
         this.bedGain = null;
-        this.musicStarted = false;
+        this.startFallbackMusic();
       }
     }
 
@@ -33943,14 +33953,22 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         .then(r => r.arrayBuffer())
         .then(buf => this.audioContext.decodeAudioData(buf.slice(0)))
         .then(decoded => {
-          this.stingBuffer = this.seamlessLoops(decoded, 2);
+          const sting = this.seamlessLoops(decoded, 2);
           // One trimmed copy, looped by the audio clock. Not the doubled sting.
-          this.bedBuffer = this.seamlessLoop(decoded);
+          const bed = this.seamlessLoop(decoded);
+          this.stingBuffer = sting;
+          this.bedBuffer = bed;
           this.stingLoading = false;
           if (this.stingPending) this.playIntroSting();
           if (this.bedPending) this.startBed();
         })
-        .catch(() => { this.stingLoading = false; });
+        .catch(() => {
+          this.stingLoading = false;
+          // A failed fetch/decode must not leave ensureMusic() stuck in its
+          // musicStarted + bedPending state. Use the media element, which can
+          // still play even if fetching for Web Audio was blocked.
+          if (this.bedPending) this.startFallbackMusic();
+        });
     }
 
     seamlessLoops(buffer, loops) {
@@ -34165,6 +34183,9 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
   'use strict';
 
   const W = 620, H = 360;
+  // All sprite509 bonus icons are centered at (662, 662) in the exported art;
+  // drawTiles() places the sprite at scale 0.05 using b.x/b.y as its origin.
+  const BONUS_CENTER_OFFSET = 662 * 0.05;
   const rand = n => Math.floor(Math.random() * Math.max(1, n));
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -34320,6 +34341,13 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       }
     }
 
+    static bonusStageCenter(g, n, b) {
+      return {
+        x: g.bgX + b.x + BONUS_CENTER_OFFSET,
+        y: g.bgY - n * CONFIG.cliffTileHeight + b.y + BONUS_CENTER_OFFSET
+      };
+    }
+
     static hitTests(g, audio) {
       const inCliff = Math.floor((g.bgY - g.y) / CONFIG.cliffTileHeight) <= CONFIG.maxCliffTiles;
       // A wall hit plays sound 3 now and sound 4 seven frames later.
@@ -34334,7 +34362,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       for (const [n,tile] of g.tiles) {
         for (const b of tile.bonuses) {
           if (b.collected) continue;
-          const bx=g.bgX+b.x, by=g.bgY-n*CONFIG.cliffTileHeight+b.y;
+          const {x:bx, y:by} = Physics.bonusStageCenter(g, n, b);
           const dx=(g.x-bx)/36, dy=(g.y-by)/48;
           if (g.y>-10 && dx*dx+dy*dy<1) {
             Physics.collectBonus(b, g, audio);
@@ -35509,7 +35537,8 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
         for (const [n,tile] of g.tiles) {
           for (const b of tile.bonuses) {
             if (b.collected) continue;
-            if (Math.hypot(x-(g.bgX+b.x),y-(g.bgY-n*445+b.y)) < 36) return b;
+            const center = window.Physics.bonusStageCenter(g, n, b);
+            if (Math.hypot(x-center.x, y-center.y) < 36) return b;
           }
         }
         // button567 is hit-only (shape 566). Its stage rect, from the exported

@@ -88,13 +88,23 @@
       if (!this.unlocked || this.musicStarted) return;
       this.musicStarted = true;
       if (!this.audioContext) {
-        this.music.play().catch(() => { this.musicStarted = false; });
+        this.startFallbackMusic();
         return;
       }
       if (this.bedBuffer) this.startBed();
       else {
         this.bedPending = true;
         this.loadStingBuffer();
+      }
+    }
+
+    startFallbackMusic() {
+      this.bedPending = false;
+      this.musicStarted = true;
+      try {
+        Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; });
+      } catch (_) {
+        this.musicStarted = false;
       }
     }
 
@@ -109,11 +119,11 @@
       gain.gain.value = 0;
       this.bed = src;
       this.bedGain = gain;
-      try { src.start(); }
+      try { src.start(); this.bedPending = false; }
       catch (_) {
         this.bed = null;
         this.bedGain = null;
-        this.musicStarted = false;
+        this.startFallbackMusic();
       }
     }
 
@@ -128,14 +138,22 @@
         .then(r => r.arrayBuffer())
         .then(buf => this.audioContext.decodeAudioData(buf.slice(0)))
         .then(decoded => {
-          this.stingBuffer = this.seamlessLoops(decoded, 2);
+          const sting = this.seamlessLoops(decoded, 2);
           // One trimmed copy, looped by the audio clock. Not the doubled sting.
-          this.bedBuffer = this.seamlessLoop(decoded);
+          const bed = this.seamlessLoop(decoded);
+          this.stingBuffer = sting;
+          this.bedBuffer = bed;
           this.stingLoading = false;
           if (this.stingPending) this.playIntroSting();
           if (this.bedPending) this.startBed();
         })
-        .catch(() => { this.stingLoading = false; });
+        .catch(() => {
+          this.stingLoading = false;
+          // A failed fetch/decode must not leave ensureMusic() stuck in its
+          // musicStarted + bedPending state. Use the media element, which can
+          // still play even if fetching for Web Audio was blocked.
+          if (this.bedPending) this.startFallbackMusic();
+        });
     }
 
     seamlessLoops(buffer, loops) {
