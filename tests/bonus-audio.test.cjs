@@ -65,6 +65,37 @@ test('timeline advances existing clips and queues newly requested children', () 
   assert.equal(timeline.pending.length, 1, 'missing child clips are queued for rendering');
 });
 
+test('stroked paths emit closePath for Z subpaths, like the fill paths', () => {
+  const context = vm.createContext({window: {}, console});
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, '..', 'assets', 'canvas-core.js'), 'utf8'),
+    context);
+  const record = () => {
+    const ops = [];
+    const ctx = {
+      _matrix: [1, 0, 0, 1, 0, 0],
+      lineWidth: 1,
+      save() {}, restore() {},
+      setTransform(a, b, c, d, e, f) { this._matrix = [a, b, c, d, e, f]; },
+      beginPath() {},
+      moveTo() { ops.push('moveTo'); },
+      lineTo() { ops.push('lineTo'); },
+      quadraticCurveTo() { ops.push('quadraticCurveTo'); },
+      closePath() { ops.push('closePath'); },
+      stroke() { ops.push('stroke'); }
+    };
+    return {ops, ctx};
+  };
+  const stroked = record();
+  context.drawPath(stroked.ctx, 'M 0 0 L 10 0 10 10 Z', true, 'NONE');
+  assert.ok(stroked.ops.includes('closePath'), 'stroke branch closes Z subpaths');
+  assert.equal(stroked.ops.indexOf('closePath'), stroked.ops.indexOf('stroke') - 1,
+    'closePath lands right before the stroke');
+  const filled = record();
+  context.drawPath(filled.ctx, 'M 0 0 L 10 0 10 10 Z', false);
+  assert.ok(filled.ops.includes('closePath'), 'fill branch still closes Z subpaths');
+});
+
 test('visual state comparison reuses buffers and detects gameplay, clip, and fade changes', async () => {
   const {app, Physics} = await createApp();
   const buffers = new Set(app.visualParts);
@@ -176,6 +207,33 @@ test('one-shot buffers load on demand while the first cue uses the immediate fal
   audio.effect(87);
   assert.equal(bedStarts(), 1, 'later cues use the decoded Web Audio buffer');
   assert.equal(plays(), 2);
+});
+
+test('unlocking warms the one-shot buffers before the first in-game cue', async () => {
+  const first = deferred();
+  const requested = [];
+  // A 100-sample buffer: short enough that skipSeek() returns it untouched
+  // (its skip offset exceeds the length), so the fake context needs no
+  // createBuffer.
+  const decode = () => Promise.resolve({sampleRate: 22050, length: 100, numberOfChannels: 1});
+  const {GameAudio} = createAudio(url => {
+    requested.push(url);
+    if (isMusic(url)) return Promise.reject(new Error('music not under test'));
+    return first.promise;
+  }, () => Promise.resolve(), decode);
+  const audio = new GameAudio();
+  assert.equal(requested.length, 0, 'construction still performs no fetches');
+  audio.unlock();
+  const ids = [3, 4, 6, 87, 94, 95, 96, 164, 299, 300, 308, 315, 373, 374, 375, 377, 381, 401, 417];
+  const urlOf = id => id === 315 ? 'assets/audio/315.wav' : `assets/audio/${id}.mp3`;
+  for (const id of ids) {
+    assert.ok(requested.includes(urlOf(id)), `effect ${id} is warmed on unlock`);
+  }
+  first.resolve({arrayBuffer: () => Promise.resolve(new ArrayBuffer(1))});
+  await nextTick();
+  for (const id of ids) {
+    assert.ok(audio.buffers.has(id), `effect ${id} is decoded after unlock`);
+  }
 });
 
 test('steady music volume avoids redundant AudioParam writes', () => {
