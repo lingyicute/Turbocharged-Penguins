@@ -847,13 +847,18 @@ function concatMatrix(m1, m2) {
     proto.transform = function (a, b, c, d, e, f) {
         if (this._enhanced) {
             var m = this._matrix;
+            // Use local vars for a tiny speedup, but allocate a fresh array
+            // for _matrix. save() pushes the _matrix reference onto the stack,
+            // so mutating in place would corrupt saved matrices and drift the
+            // CTM over a frame.
+            var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
             this._matrix = [
-                m[0] * a + m[2] * b,
-                m[1] * a + m[3] * b,
-                m[0] * c + m[2] * d,
-                m[1] * c + m[3] * d,
-                m[0] * e + m[2] * f + m[4],
-                m[1] * e + m[3] * f + m[5]
+                m0 * a + m2 * b,
+                m1 * a + m3 * b,
+                m0 * c + m2 * d,
+                m1 * c + m3 * d,
+                m0 * e + m2 * f + m4,
+                m1 * e + m3 * f + m5
             ];
         }
         return origTransform.call(this, a, b, c, d, e, f);
@@ -1511,9 +1516,9 @@ function parsePathString(p) {
 
 function drawPath(ctx, p, doStroke, scaleMode) {
     var parsed = parsePathString(p);
-    var m = ctx._matrix;
 
     if (doStroke) {
+        var m = ctx._matrix;
         switch (scaleMode) {
             case "NONE":
                 break;

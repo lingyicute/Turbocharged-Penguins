@@ -84,8 +84,9 @@
         root.path = 'root';
         root.id = 0;
         root.frame = this.app.rootFrame;
-        const c = root.counts;
-        for (const k in c) delete c[k];
+        // Allocate a fresh null-proto object instead of enumerating+deleting
+        // every key from the previous sibling counts.
+        root.counts = Object.create(null);
       }
     }
 
@@ -139,8 +140,9 @@
         entry.path = path;
         entry.id = id;
         entry.frame = clip.frame;
-        const c = entry.counts;
-        for (const k in c) delete c[k];
+        // Fresh null-proto counts; faster than enumerating and deleting every
+        // previous child-name key.
+        entry.counts = Object.create(null);
       }
       return clip;
     }

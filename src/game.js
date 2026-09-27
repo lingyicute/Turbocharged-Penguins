@@ -162,8 +162,10 @@
         if (steps > 7) this.physAcc = 0;
       } else this.physAcc = 0;
       // Always refresh the snapshot, even on forced frames: skipping the
-      // call would leave the next comparison against a stale state.
-      const changed = this.forceRender || this.visualStateChanged();
+      // call would leave the next comparison against a stale state. During
+      // gameplay we take the fast-lane check (header only) to avoid the full
+      // clip walk; the post-render call rebuilds the complete snapshot.
+      const changed = this.forceRender || this.visualStateChanged(true);
       this.forceRender = false;
       if (changed) {
         this.renderer.render();
@@ -177,7 +179,13 @@
     // camera, or a fading bonus changes. Compare into reusable arrays instead
     // of allocating a parts array and joining a potentially large string on
     // every display refresh.
-    visualStateChanged() {
+    //
+    // During `playing` (and `ending` camera scroll) the camera/score/penguin
+    // advance every physics tick anyway, so the header comparison is enough
+    // to decide we must repaint. Walking every clip to append [id,frame,playing]
+    // tuples was the single largest profile slice during flight; we only do
+    // that full walk on idle/menu frames where clips actually may be static.
+    visualStateChanged(fast = false) {
       const previous = this.visualParts[this.visualPartIndex];
       const current = this.visualParts[this.visualPartIndex ^ 1];
       const g = this.game;
@@ -188,7 +196,9 @@
         current.push(g.x, g.y, g.bgX, g.bgY, g.farX, g.farY, g.rotation, g.cm, g.vy, g.turbos,
           g.anim, g.pengFrame, g.explX, g.explY, g.dummyX, g.dummyY,
           g.pointerStatus ? 1 : 0, g.turboClickedToggle ? 1 : 0);
-        if (g.tiles) {
+        // Fading bonuses animate on idle/result screens; during pure gameplay
+        // flight they're transient and don't affect the header-no-change case.
+        if (g.tiles && this.mode !== 'playing') {
           for (const tile of g.tiles.values()) {
             for (const b of tile.bonuses) {
               if (b.collected && this.now - b.collected < 600)
@@ -197,12 +207,28 @@
           }
         }
       }
+      const headerLen = current.length;
+      let changed = headerLen !== previous.length;
+      if (!changed) {
+        for (let i = 0; i < headerLen; i++) {
+          if (current[i] !== previous[i]) { changed = true; break; }
+        }
+      }
+      const inMotion = this.mode === 'playing' || this.mode === 'ending';
+      if (fast && inMotion && changed) {
+        // Fast lane — we already know we need to repaint, but we still need
+        // the post-render VSC call to rebuild a full snapshot for the next
+        // frame. Swap indices without walking clips; the post-render call
+        // (which passes fast=false) will fill everything in.
+        this.visualPartIndex ^= 1;
+        return true;
+      }
+      // Full walk: append every clip frame so the next frame has a baseline.
       for (const clip of this.timeline.clips.values())
         current.push(clip.id, clip.frame, clip.playing ? 1 : 0);
-
-      let changed = current.length !== previous.length;
       if (!changed) {
-        for (let i = 0; i < current.length; i++) {
+        if (current.length !== previous.length) changed = true;
+        else for (let i = headerLen; i < current.length; i++) {
           if (current[i] !== previous[i]) { changed = true; break; }
         }
       }
