@@ -144,7 +144,10 @@
       }
       const ctx = this._meter;
       if (!ctx) return null;
-      ctx._localBox = null;
+      // Reuse a single box object instead of allocating a fresh one per cache
+      // miss (first encounter of each static shape). The add() hook in
+      // canvas-core resets min/max/n on beginPath().
+      if (!ctx._localBox) ctx._localBox = {minX: 0, minY: 0, maxX: 0, maxY: 0, n: 0};
       ctx._trackLocal = true;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.rasterizing = true;
@@ -193,7 +196,14 @@
       const ratioKey = ratio == null ? 0 : Math.round(ratio * 1000) / 1000;
       const key = obj + '|' + (frame ?? 0) + '|' + ratioKey + '|' + this.cxKey(ctrans) + '|' + scaleKey;
       let entry = this.rasters.get(key);
-      if (!entry) {
+      if (entry) {
+        // LRU touch: Map preserves insertion order, so delete+set moves the
+        // entry to the end. Eviction below drops the oldest (least recently
+        // used) key first, keeping the ever-present cliff/sky tiles hot even
+        // when transient UI shapes churn the cache during panel animations.
+        // (delete is guarded because unit tests stub this.rasters.)
+        if (this.rasters.delete) { this.rasters.delete(key); this.rasters.set(key, entry); }
+      } else {
         const bounds = this.localBounds(obj, frame ?? 0, ratioKey, ctrans);
         if (!bounds) {
           window[obj]._noRaster = true;
@@ -370,8 +380,12 @@
       ));
     }
     place(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, time) {
-      if ((obj.charCodeAt(0) === 115 ? obj.charCodeAt(1) === 104 : (obj.startsWith('image') || obj.startsWith('morphshape'))) &&
-          this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
+      // Hot path: ~hundreds of place() calls per frame. Fast charCode prefix
+      // check before any suffix scan or string allocation.
+      const c0 = obj.charCodeAt(0);
+      if ((c0 === 115 && obj.charCodeAt(1) === 104) || c0 === 105 || c0 === 109) {
+        if (this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
+      }
       // sprite13 is the white corner cap (shape12), placed on all four corners.
       if (obj === 'sprite13') return;
       const a = this.app, g = a.game;
@@ -381,8 +395,12 @@
       if (obj === 'sprite478') {
         const clip = a.timeline.enter(obj);
         if (this.currentBonus) this.currentBonus.visualPath = clip.path;
-        const [aa, bb, cc, dd, tx, ty] = matrix;
-        const mat = [aa, bb, cc, dd, tx + aa * 662, ty + bb * 662];
+        const aa = matrix[0], bb = matrix[1], cc = matrix[2], dd = matrix[3], tx = matrix[4], ty = matrix[5];
+        // Reuse a scratch matrix instead of allocating a fresh array every
+        // time the x1 bubble is rendered (once per placed bonus per frame).
+        const mat = this._tmpMatA || (this._tmpMatA = [1,0,0,1,0,0]);
+        mat[0]=aa; mat[1]=bb; mat[2]=cc; mat[3]=dd;
+        mat[4] = tx + aa * 662; mat[5] = ty + bb * 662;
         this.skipBubbleLabel = true;
         try {
           return this.basePlace('sprite488', canvas, ctx, mat, ctrans, blend, clip.frame - 1, ratio, 0);
@@ -480,28 +498,41 @@
           } finally { a.timeline.leave(); }
           return;
         }
+        // Reuse a single scratch matrix for every in-place position override
+        // below; avoids allocating a fresh 6-element array per sprite per frame.
+        const sm = this._tmpMatA || (this._tmpMatA = [1,0,0,1,0,0]);
         if (obj === 'sprite568') {
-          return draw(obj, [matrix[0],matrix[1],matrix[2],matrix[3],g.x,g.y]);
+          sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
+          sm[4]=g.x; sm[5]=g.y;
+          return draw(obj, sm);
         }
         if (obj === 'sprite565') {
           if (!g.rotation) return draw(obj, matrix);
           const r = g.rotation * Math.PI / 180, co = Math.cos(r), si = Math.sin(r);
-          const [aa,bb,cc,dd,tx,ty] = matrix;
-          return draw(obj, [aa*co-cc*si,bb*co-dd*si,aa*si+cc*co,bb*si+dd*co,tx,ty]);
+          const aa=matrix[0], bb=matrix[1], cc=matrix[2], dd=matrix[3];
+          sm[0]=aa*co-cc*si; sm[1]=bb*co-dd*si; sm[2]=aa*si+cc*co; sm[3]=bb*si+dd*co;
+          sm[4]=matrix[4]; sm[5]=matrix[5];
+          return draw(obj, sm);
         }
         if (obj === 'sprite555') {
-          return draw(obj, [matrix[0],matrix[1],matrix[2],matrix[3], g.x, matrix[5]]);
+          sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
+          sm[4]=g.x; sm[5]=matrix[5];
+          return draw(obj, sm);
         }
         if (obj === 'sprite579') {
-          const x = g.dummyX ?? g.x + 40;
-          const y = g.dummyY ?? g.y;
-          return draw(obj, [matrix[0],matrix[1],matrix[2],matrix[3], x, y]);
+          sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
+          sm[4]=g.dummyX ?? g.x + 40; sm[5]=g.dummyY ?? g.y;
+          return draw(obj, sm);
         }
         if (obj === 'sprite569' && g.explX != null) {
-          return draw(obj, [matrix[0],matrix[1],matrix[2],matrix[3], g.explX, g.explY]);
+          sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
+          sm[4]=g.explX; sm[5]=g.explY;
+          return draw(obj, sm);
         }
         if (obj === 'sprite418' && a.launchDx) {
-          return draw(obj, [matrix[0],matrix[1],matrix[2],matrix[3], matrix[4] + a.launchDx, matrix[5]]);
+          sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
+          sm[4]=matrix[4] + a.launchDx; sm[5]=matrix[5];
+          return draw(obj, sm);
         }
       }
       return draw(obj, matrix);
@@ -524,6 +555,9 @@
       const bottom = Math.floor(g.bgY / 445);
       if (!this._tileMat) this._tileMat = [0.05, 0, 0, 0.05, 0, 0];
       if (!this._bonusMat) this._bonusMat = [0.05, 0, 0, 0.05, 0, 0];
+      if (!this._floeMat) this._floeMat = [0.05, 0, 0, 0.05, 0, 0];
+      if (!this._markerMat) this._markerMat = [0.05, 0, 0, 0.05, 0, 0];
+      if (!this._tmpMatA) this._tmpMatA = [1, 0, 0, 1, 0, 0];
       const tileMat = this._tileMat;
       const bonusMat = this._bonusMat;
       tileMat[4] = g.bgX;
@@ -536,7 +570,6 @@
           this.basePlace('sprite537', canvas, ctx, tileMat, ctrans, blend, f, 0, 0);
         } finally { this.drawingTile = false; }
         if (n === 28) {
-          if (!this._floeMat) this._floeMat = [0.05, 0, 0, 0.05, 0, 0];
           this._floeMat[4] = g.bgX + 39.1;
           this._floeMat[5] = g.bgY - n * 445 + 388.1;
           this.basePlace('sprite514', canvas, ctx, this._floeMat, ctrans, blend, 1, 0, 0);
@@ -563,7 +596,6 @@
         const minScore = (n-1)*445 + 500;
         if (best > 12000 && best > minScore && best < minScore+445) {
           const markerY = 445-(best-minScore);
-          if (!this._markerMat) this._markerMat = [0.05, 0, 0, 0.05, 0, 0];
           this._markerMat[4] = g.bgX + 39;
           this._markerMat[5] = g.bgY - n * 445 + markerY;
           this.basePlace('sprite520', canvas, ctx, this._markerMat, ctrans, blend, n>28?2:1, 0, 0);
