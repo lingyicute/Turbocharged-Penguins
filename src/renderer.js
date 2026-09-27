@@ -30,6 +30,10 @@
       this.rasters = new Map();
       this.rasterPixels = 0;
       this.rasterizing = false;
+      // Quality guardrail: blitting a cached raster at a fractional offset
+      // resamples edges instead of re-rendering the exact vector path, so
+      // optimizations that would change a single output pixel stay off.
+      this.cullEnabled = false;
       const self = this;
       window.place = function(obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time) {
         return self.place(obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time);
@@ -68,6 +72,7 @@
         this.rasters.clear();
         this.rasterPixels = 0;
       }
+
       if (this.app) this.app.forceRender = true;
     }
 
@@ -144,11 +149,18 @@
       }
       const ctx = this._meter;
       if (!ctx) return null;
-      // Reuse a single box object instead of allocating a fresh one per cache
-      // miss (first encounter of each static shape). The add() hook in
-      // canvas-core resets min/max/n on beginPath().
-      if (!ctx._localBox) ctx._localBox = {minX: 0, minY: 0, maxX: 0, maxY: 0, n: 0};
+      // One fresh box per meter pass: add() accumulates into _localBox and
+      // never resets it (it is the _pathBox sibling that resets on
+      // beginPath), and every bounds entry below is stored by reference in
+      // _boundsCache. Sharing a single box would therefore (a) union the
+      // bounds of every shape ever metered and (b) alias one object across
+      // all cache slots, silently ballooning later rasterizations past the
+      // area cap. Per-pass allocation costs ~one object per shape per
+      // session, which the hit path above already avoids.
+      ctx._localBox = null;
       ctx._trackLocal = true;
+      ctx._trackPad = 0;
+      ctx._trackPadConst = 0;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.rasterizing = true;
       try {
@@ -168,6 +180,12 @@
         fn._boundsCache.set(bKey, null);
         return null;
       }
+      // Stroke padding recorded by drawPath/drawMorphPath during metering, so
+      // stroked shapes can be cached without clipping the line. pad is in
+      // local units (scale-independent); padConst is device-space and is
+      // divided by the raster scale at cache time.
+      b.pad = ctx._trackPad || 0;
+      b.padConst = ctx._trackPadConst || 0;
       fn._boundsCache.set(bKey, b);
       return b;
     }
@@ -183,7 +201,9 @@
       if (blend > 1) return false;
       if (!ctx || ctx.globalCompositeOperation !== 'source-over') return false;
       // NORMAL strokes are expanded by 20x lineWidth after the path is recorded.
-      // Caching those clips the line. Fills are the expensive redraw.
+      // Caching those clips the line, and any cached stroke blit resamples the
+      // outline at fractional offsets, visibly softening it. Fills are the
+      // expensive redraw.
       if (this.strokes(obj) || window[obj]._noRaster) return false;
       if (!this.imagesReady(obj)) return false;
       const scale = this.getDeviceScale(ctx, matrix);
@@ -192,11 +212,18 @@
       // Placement ratios change each intro tick; including them duplicated
       // identical bitmaps and evicted useful entries during the first seconds.
       if (!obj.startsWith('morphshape')) { frame = 0; ratio = 0; }
-      const scaleKey = Math.round(scale * 1000) / 1000;
       const ratioKey = ratio == null ? 0 : Math.round(ratio * 1000) / 1000;
+      const scaleKey = Math.round(scale * 1000) / 1000;
       const key = obj + '|' + (frame ?? 0) + '|' + ratioKey + '|' + this.cxKey(ctrans) + '|' + scaleKey;
       let entry = this.rasters.get(key);
+      let minX, minY, w, h;
       if (entry) {
+        // Frustum culling on the cached padded bounds (cheap: no bounds
+        // lookup on the hit path). Frustum-culled blits are pixel-identical
+        // no-ops, and skipping the blit also keeps filmstrip panels from
+        // fighting the budget with entries nobody sees.
+        minX = entry.minX; minY = entry.minY; w = entry.w; h = entry.h;
+        if (this.culledOut(ctx, matrix, minX, minY, minX + w, minY + h)) return true;
         // LRU touch: Map preserves insertion order, so delete+set moves the
         // entry to the end. Eviction below drops the oldest (least recently
         // used) key first, keeping the ever-present cliff/sky tiles hot even
@@ -209,12 +236,14 @@
           window[obj]._noRaster = true;
           return false;
         }
-        const pad = 8 + 2 / scale;
-        const minX = bounds.minX - pad;
-        const minY = bounds.minY - pad;
-        const w = bounds.maxX - bounds.minX + pad * 2;
-        const h = bounds.maxY - bounds.minY + pad * 2;
+        const pad = 8 + 2 / scale + (bounds.pad || 0) + (bounds.padConst || 0) / scale;
+        minX = bounds.minX - pad;
+        minY = bounds.minY - pad;
+        w = bounds.maxX - bounds.minX + pad * 2;
+        h = bounds.maxY - bounds.minY + pad * 2;
         if (!(w > 0 && h > 0)) return false;
+        if (this.culledOut(ctx, matrix, minX, minY, bounds.maxX + pad, bounds.maxY + pad))
+          return true;
         const cw = Math.ceil(w * scale);
         const ch = Math.ceil(h * scale);
         // Tall cliff art is a thin strip, so the limit is area, not the long side.
@@ -274,6 +303,34 @@
       return true;
     }
 
+    // True when the device-space bounding box of [lx0,ly0]..[lx1,ly1] under
+    // the current transform (ctx._matrix composed with the place matrix) misses
+    // the canvas entirely. Drawing such a shape would produce no pixels.
+    culledOut(ctx, matrix, lx0, ly0, lx1, ly1) {
+      if (this.cullEnabled === false) return false;
+      const pm = ctx._matrix;
+      if (!pm || !matrix || !ctx.canvas) return false;
+      const t0 = pm[0] * matrix[0] + pm[2] * matrix[1];
+      const t1 = pm[1] * matrix[0] + pm[3] * matrix[1];
+      const t2 = pm[0] * matrix[2] + pm[2] * matrix[3];
+      const t3 = pm[1] * matrix[2] + pm[3] * matrix[3];
+      const t4 = pm[0] * matrix[4] + pm[2] * matrix[5] + pm[4];
+      const t5 = pm[1] * matrix[4] + pm[3] * matrix[5] + pm[5];
+      let ddx, ddy, dx0, dy0, dx1, dy1;
+      ddx = t0 * lx0 + t2 * ly0 + t4; ddy = t1 * lx0 + t3 * ly0 + t5;
+      dx0 = dx1 = ddx; dy0 = dy1 = ddy;
+      ddx = t0 * lx1 + t2 * ly1 + t4; ddy = t1 * lx1 + t3 * ly1 + t5;
+      if (ddx < dx0) dx0 = ddx; if (ddx > dx1) dx1 = ddx;
+      if (ddy < dy0) dy0 = ddy; if (ddy > dy1) dy1 = ddy;
+      ddx = t0 * lx0 + t2 * ly1 + t4; ddy = t1 * lx0 + t3 * ly1 + t5;
+      if (ddx < dx0) dx0 = ddx; if (ddx > dx1) dx1 = ddx;
+      if (ddy < dy0) dy0 = ddy; if (ddy > dy1) dy1 = ddy;
+      ddx = t0 * lx1 + t2 * ly0 + t4; ddy = t1 * lx1 + t3 * ly0 + t5;
+      if (ddx < dx0) dx0 = ddx; if (ddx > dx1) dx1 = ddx;
+      if (ddy < dy0) dy0 = ddy; if (ddy > dy1) dy1 = ddy;
+      return dx1 <= 0 || dy1 <= 0 || dx0 >= ctx.canvas.width || dy0 >= ctx.canvas.height;
+    }
+
     // Drawn in text484's space, where "x2" sits, so the bolt lands in the bubble.
     lightningLabel(ctx, ctrans) {
       const col = window.tocolor(ctrans.apply([252, 197, 0, 1]));
@@ -302,12 +359,7 @@
     }
 
     placedGlyphs(ctx, font, rgba, glyphs) {
-      for (const [ch, size, x, y] of glyphs) {
-        ctx.save();
-        ctx.transform(size, 0, 0, size, x, y);
-        font(ctx, ch, rgba);
-        ctx.restore();
-      }
+      window.drawPlacedGlyphs(ctx, font, rgba, glyphs);
     }
     // advances are already in the text field's translation units, not font units.
     layoutTracked(phrase, advances, size, y, anchor, centered) {
