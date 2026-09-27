@@ -1356,6 +1356,23 @@ function useRatio(v1, v2, ratio) {
     return v1 + (v2 - v1) * (ratio / 65535);
 }
 
+function trackStrokePad(ctx, scaleModeHint) {
+    // Raster-cache bounds accounting: a stroke extends past the recorded path
+    // points, so the metering pass must pad the local box or the cached
+    // bitmap would clip the line. NORMAL/VERTICAL/HORIZONTAL strokes are
+    // widened by 20x lineWidth against the (near-uniform) device scale, which
+    // is a constant 10x lineWidth in local units; NONE strokes are a constant
+    // device-space width, recorded separately and divided by the raster
+    // scale when the cache entry is created.
+    if (!ctx._trackLocal) return;
+    var lw = ctx.lineWidth || 0;
+    if (scaleModeHint === "NONE") {
+        if (lw / 2 > (ctx._trackPadConst || 0)) ctx._trackPadConst = lw / 2;
+    } else {
+        if (lw * 10 > (ctx._trackPad || 0)) ctx._trackPad = lw * 10;
+    }
+}
+
 function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
     var parsed = parseMorphPathString(p);
     var ops = parsed.ops;
@@ -1363,6 +1380,7 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
     var m = ctx._matrix;
 
     if (doStroke) {
+        trackStrokePad(ctx, scaleMode);
         switch (scaleMode) {
             case "NONE":
                 break;
@@ -1518,6 +1536,7 @@ function drawPath(ctx, p, doStroke, scaleMode) {
     var parsed = parsePathString(p);
 
     if (doStroke) {
+        trackStrokePad(ctx, scaleMode);
         var m = ctx._matrix;
         switch (scaleMode) {
             case "NONE":
@@ -1711,6 +1730,7 @@ function drawPlacedGlyphs(ctx, font, color, glyphs) {
         ctx.restore();
     }
 }
+
 function scaleAdvances(fu, size) {
     var adv = {}, k;
     for (k in fu) if (Object.prototype.hasOwnProperty.call(fu, k)) adv[k] = fu[k] * size;
