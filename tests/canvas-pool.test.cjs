@@ -67,3 +67,9 @@ test('stage-sized canvases remain pooled when reset() is available', () => {
   assert.equal(state.created.length, 1);
   assert.equal(state.resetCalls, 1);
 });
+
+test('transformRect bounds stay correct for rectangles left of or above the origin', () => {
+  const {core} = loadCore({supportsReset: true});
+  const rect = core.transformRect([1, 0, 0, 1, 0, 0], {xMin: -30, xMax: -10, yMin: -8, yMax: -2});
+  assert.deepEqual({...rect}, {xMin: -30, xMax: -10, yMin: -8, yMax: -2});
+});

@@ -1078,10 +1078,11 @@ var transformPoint = function (matrix, p) {
 }
 
 var transformRect = function (matrix, rect) {
-    var minX = Number.MAX_VALUE;
-    var minY = Number.MAX_VALUE;
-    var maxX = Number.MIN_VALUE;
-    var maxY = Number.MIN_VALUE;
+    // Number.MIN_VALUE is the smallest positive double, not the most negative.
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
     var point = transformPoint(matrix, {x: rect.xMin, y: rect.yMin});
     if (point.x < minX) {
         minX = point.x;
