@@ -167,3 +167,24 @@ test("keyboard penguin select updates sprite403 frame and result keydown respect
   documentEvents.keydown({code: "Space", repeat: false, preventDefault() {}});
   assert.equal(app.mode, "restarting", "Space on panel 160 triggers restart");
 });
+
+test("releasing a cancelled charge over another penguin hovers it and window blur cancels charge", async () => {
+  let blurHandler;
+  const {app, canvasEvents} = await createApp();
+  const clip1 = {path: "p1", frame: 1, playing: false};
+  const clip2 = {path: "p2", frame: 1, playing: false};
+  app.timeline.penguins = new Map([["p1", clip1], ["p2", clip2]]);
+  app.timeline.clips.set("p1", clip1);
+  app.timeline.clips.set("p2", clip2);
+  app.timeline.lookup = path => app.timeline.clips.get(path);
+  app.timeline.goto = (c, f, p) => { c.frame = f; c.playing = p; };
+  app.mode = "select";
+
+  canvasEvents.pointerdown(pointer(220, 260));
+  assert.equal(app.charging, 1);
+  // Release over penguin 2: cancels charge on 1 and immediately hovers 2
+  canvasEvents.pointerup(pointer(300, 260));
+  assert.equal(app.charging, 0);
+  assert.equal(app.hovered, 2);
+  assert.equal(clip2.frame, 2);
+});

@@ -23743,7 +23743,7 @@ function text515(ctx,ctrans,frame,ratio,time){
 
 function text516(ctx,ctrans,frame,ratio,time){
 	var app = window.TurboPenguins;
-	var best = app && app.storedBest != null ? app.storedBest : 0;
+	var best = app ? (app.mode === "playing" ? app.storedBest : (app.beatenBest ?? app.storedBest)) || 0 : 0;
 	var str = (Math.max(0, best) / 100).toFixed(2) + "m";
 	var textColor = tocolor(ctrans.apply([204,0,0,1]));
 	var adv = text516._adv || (text516._adv = {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381});
@@ -23802,7 +23802,7 @@ function text518(ctx,ctrans,frame,ratio,time){
 
 function text519(ctx,ctrans,frame,ratio,time){
 	var app = window.TurboPenguins;
-	var best = app && app.storedBest != null ? app.storedBest : 0;
+	var best = app ? (app.mode === "playing" ? app.storedBest : (app.beatenBest ?? app.storedBest)) || 0 : 0;
 	var str = (Math.max(0, best) / 100).toFixed(2) + "m";
 	var textColor = tocolor(ctrans.apply([183,0,157,1]));
 	var adv = text519._adv || (text519._adv = {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381});
@@ -33773,6 +33773,9 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       if (!clip) return;
       clip.frame = Math.max(1, Math.min(clip.length, frame));
       clip.playing = playing;
+      if (this.stackIndex >= 0 && this.stack[this.stackIndex]?.path === clip.path) {
+        this.stack[this.stackIndex].frame = clip.frame;
+      }
       // A goto that plays re-runs the frame, including its sound, even if
       // the playhead was already there. Internal loops must not pass retrigger
       // or a same-frame goto would recurse.
@@ -33787,25 +33790,33 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         this.pending.push({path, frame, playing, retrigger: frame != null});
         return;
       }
-      if (frame == null) this.play(clip);
-      else this.goto(clip, frame, playing, true);
+      if (frame == null) {
+        if (playing === false) this.stop(clip);
+        else this.play(clip);
+      } else this.goto(clip, frame, playing, true);
     }
 
     flushPending(clip) {
       if (this.pending.length === 0) return false;
       const left = [];
-      let jumped = false;
+      let handled = false;
       for (let i = 0; i < this.pending.length; i++) {
         const item = this.pending[i];
         if (item.path !== clip.path) { left.push(item); continue; }
-        if (item.frame == null) this.play(clip);
-        else {
-          jumped = true;
+        if (item.frame == null) {
+          if (!handled) {
+            handled = true;
+            this.onFrame(clip);
+          }
+          if (item.playing === false) this.stop(clip);
+          else this.play(clip);
+        } else {
+          handled = true;
           this.goto(clip, item.frame, item.playing, !!item.retrigger);
         }
       }
       this.pending = left;
-      return jumped;
+      return handled;
     }
 
     sibling(clip, id, ordinal = 0) {
@@ -33922,7 +33933,9 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
 
     turboButton(clip, f) {
       const g = this.app.game;
-      if (f === 3) {
+      if (f === 2) {
+        if (g && g.turbos >= 1) this.requestPlay(clip.path + '/sprite550#0', null, true);
+      } else if (f === 3) {
         if (!g || g.turbos < 1) this.goto(clip, 1, false);
         else if (g.firstTurbo) this.goto(this.child(clip, 544), 2, true);
       } else if (f === 15) {
@@ -35265,6 +35278,8 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         if (fr !== undefined) {
           clip.frame=fr+1;
           clip.playing=false;
+          const top = a.timeline.parent();
+          if (top && top.path === clip.path) top.frame = clip.frame;
         }
         try {
           return this.basePlace(name, canvas, ctx, mat, ctrans, blend, fr ?? clip.frame-1, rt, 0);
@@ -35424,7 +35439,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
           }
           ctx.restore();
         }
-        const best = this.app.storedBest;
+        const best = (this.app.mode === 'playing' ? this.app.storedBest : (this.app.beatenBest ?? this.app.storedBest)) || 0;
         const minScore = (n-1)*445 + 500;
         if (best > 12000 && best >= minScore && best < minScore+445) {
           const markerY = 445-(best-minScore);
@@ -35652,7 +35667,8 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       const g = this.game;
       current.length = 0;
       current.push(this.rootFrame, this.panelFrame, this.mode, this.audio.muted ? 1 : 0,
-        this.displayCm, this.launchDx || 0);
+        this.displayCm, this.launchDx || 0,
+        this.mode === 'playing' ? this.storedBest : this.beatenBest);
       if (g) {
         current.push(g.x, g.y, g.bgX, g.bgY, g.farX, g.farY, g.rotation, g.cm, g.vy, g.turbos,
           g.anim, g.explX, g.explY, g.dummyX, g.dummyY,
@@ -36088,7 +36104,11 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
         this.pressed=null;
         if (wasCharge) {
           if (same) this.choosePenguin(wasCharge);
-          else this.cancelCharge();
+          else {
+            this.cancelCharge();
+            if (this.mode === 'select' && e.pointerType !== 'touch')
+              this.hoverPenguin(/^penguin[123]$/.test(hit || '') ? +hit.slice(-1) : 0);
+          }
         } else if (same) this.activate(hit,p.x,p.y);
         this.canvas.style.cursor = !this.audio.unlocked || this.hitArea(p.x,p.y) ? 'pointer' : 'default';
       });
@@ -36096,6 +36116,12 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
         this.pressed=null;
         this.cancelCharge();
       });
+      if (window.addEventListener) {
+        window.addEventListener('blur', () => {
+          this.pressed = null;
+          this.cancelCharge();
+        });
+      }
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
           this.pressed = null;

@@ -513,6 +513,8 @@
         if (fr !== undefined) {
           clip.frame=fr+1;
           clip.playing=false;
+          const top = a.timeline.parent();
+          if (top && top.path === clip.path) top.frame = clip.frame;
         }
         try {
           return this.basePlace(name, canvas, ctx, mat, ctrans, blend, fr ?? clip.frame-1, rt, 0);
@@ -672,7 +674,7 @@
           }
           ctx.restore();
         }
-        const best = this.app.storedBest;
+        const best = (this.app.mode === 'playing' ? this.app.storedBest : (this.app.beatenBest ?? this.app.storedBest)) || 0;
         const minScore = (n-1)*445 + 500;
         if (best > 12000 && best >= minScore && best < minScore+445) {
           const markerY = 445-(best-minScore);

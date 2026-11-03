@@ -21881,7 +21881,7 @@ function text515(ctx,ctrans,frame,ratio,time){
 
 function text516(ctx,ctrans,frame,ratio,time){
 	var app = window.TurboPenguins;
-	var best = app && app.storedBest != null ? app.storedBest : 0;
+	var best = app ? (app.mode === "playing" ? app.storedBest : (app.beatenBest ?? app.storedBest)) || 0 : 0;
 	var str = (Math.max(0, best) / 100).toFixed(2) + "m";
 	var textColor = tocolor(ctrans.apply([204,0,0,1]));
 	var adv = text516._adv || (text516._adv = {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381});
@@ -21940,7 +21940,7 @@ function text518(ctx,ctrans,frame,ratio,time){
 
 function text519(ctx,ctrans,frame,ratio,time){
 	var app = window.TurboPenguins;
-	var best = app && app.storedBest != null ? app.storedBest : 0;
+	var best = app ? (app.mode === "playing" ? app.storedBest : (app.beatenBest ?? app.storedBest)) || 0 : 0;
 	var str = (Math.max(0, best) / 100).toFixed(2) + "m";
 	var textColor = tocolor(ctrans.apply([183,0,157,1]));
 	var adv = text519._adv || (text519._adv = {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381});

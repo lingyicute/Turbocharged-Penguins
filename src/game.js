@@ -189,7 +189,8 @@
       const g = this.game;
       current.length = 0;
       current.push(this.rootFrame, this.panelFrame, this.mode, this.audio.muted ? 1 : 0,
-        this.displayCm, this.launchDx || 0);
+        this.displayCm, this.launchDx || 0,
+        this.mode === 'playing' ? this.storedBest : this.beatenBest);
       if (g) {
         current.push(g.x, g.y, g.bgX, g.bgY, g.farX, g.farY, g.rotation, g.cm, g.vy, g.turbos,
           g.anim, g.explX, g.explY, g.dummyX, g.dummyY,
@@ -625,7 +626,11 @@
         this.pressed=null;
         if (wasCharge) {
           if (same) this.choosePenguin(wasCharge);
-          else this.cancelCharge();
+          else {
+            this.cancelCharge();
+            if (this.mode === 'select' && e.pointerType !== 'touch')
+              this.hoverPenguin(/^penguin[123]$/.test(hit || '') ? +hit.slice(-1) : 0);
+          }
         } else if (same) this.activate(hit,p.x,p.y);
         this.canvas.style.cursor = !this.audio.unlocked || this.hitArea(p.x,p.y) ? 'pointer' : 'default';
       });
@@ -633,6 +638,12 @@
         this.pressed=null;
         this.cancelCharge();
       });
+      if (window.addEventListener) {
+        window.addEventListener('blur', () => {
+          this.pressed = null;
+          this.cancelCharge();
+        });
+      }
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
           this.pressed = null;
