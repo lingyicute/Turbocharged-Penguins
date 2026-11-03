@@ -143,3 +143,12 @@ test("gradientGlow and gradientBevel use local canvas contexts and integer LUT i
   const bevel = core.Filters.gradientBevel(srcCanvas, srcCtx, [[255, 0, 0, 1], [0, 255, 0, 1]], [0, 1], 2, 2, 1.5, core.Filters.FULL, 45, 1, true, 1);
   assert.equal(bevel.width, 4);
 });
+
+test("cxform.merge returns the other operand without allocation when either side is identity", () => {
+  const {core} = loadCore({supportsReset: true});
+  const id = new core.cxform(0, 0, 0, 0, 255, 255, 255, 255);
+  const tint = new core.cxform(10, 20, 30, 0, 128, 128, 128, 256);
+  assert.equal(id.merge(tint), tint);
+  assert.equal(tint.merge(id), tint);
+  assert.equal(id.merge(id), id);
+});
