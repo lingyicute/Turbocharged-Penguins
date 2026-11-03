@@ -297,7 +297,8 @@
 
     applyStingEnvelope() {
       if (!this.sting || !this.stingGain) return;
-      const t = (performance.now() - this.stingStarted) / 1000;
+      const now = this.hiddenPaused && this.hiddenAt ? Math.max(this.hiddenAt, this.stingStarted) : performance.now();
+      const t = (now - this.stingStarted) / 1000;
       const start = 0x5d6e / 0x8000;
       let v = start;
       if (t >= 7.39) v = 0;
@@ -336,7 +337,7 @@
         this.ensureMusic();
         return;
       }
-      if (this.muted || !id) return;
+      if (this.muted || this.hiddenPaused || !id) return;
       if (this.audioContext && this.buffers.has(id)) {
         try {
           const src = this.audioContext.createBufferSource();
@@ -395,12 +396,17 @@
           this.musicWasPlaying = true;
           this.music.pause();
         }
+        for (const a of this.effects) {
+          if (a.pause) a.pause();
+        }
+        this.effects.clear();
         return;
       }
       if (!this.hiddenPaused) return;
       this.hiddenPaused = false;
       if (this.stingStarted && this.hiddenAt && typeof performance !== 'undefined') {
-        this.stingStarted += Math.max(0, performance.now() - this.hiddenAt);
+        const hiddenFrom = Math.max(this.hiddenAt, this.stingStarted);
+        this.stingStarted += Math.max(0, performance.now() - hiddenFrom);
       }
       this.hiddenAt = 0;
       if (!this.unlocked) return;

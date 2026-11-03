@@ -14,6 +14,7 @@
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const scoreString = cm => (Math.max(0, cm) / 100).toFixed(2) + 'm';
   const SINGLE_CUE_IDS = Object.freeze(new Set([5, 7, 294, 382, 402, 403, 418, 423, 550, 553, 555, 565, 569, 578, 579]));
+  const HANDLED_KEYS = Object.freeze(new Set(['Space', 'Enter', 'Digit1', 'Digit2', 'Digit3', 'KeyM']));
 
   class TurboPenguins {
     constructor() {
@@ -208,7 +209,7 @@
         }
       }
       const headerLen = current.length;
-      let changed = headerLen !== previous.length;
+      let changed = previous.length < headerLen;
       if (!changed) {
         for (let i = 0; i < headerLen; i++) {
           if (current[i] !== previous[i]) { changed = true; break; }
@@ -428,8 +429,9 @@
       this.charging = n;
       const clip = this.penguinClip(n);
       if (clip) this.timeline.goto(clip, 19, true);
-      const blurs = this.timeline.lookup('root/sprite403#0');
+      const blurs = this.timeline.lookup ? this.timeline.lookup('root/sprite403#0') : null;
       if (blurs) this.timeline.goto(blurs, n, false);
+      else if (this.timeline.requestPlay) this.timeline.requestPlay('root/sprite403#0', n, false);
     }
     cancelCharge() {
       if (!this.charging) return;
@@ -450,6 +452,9 @@
       this.launchReady=false;
       this.displayCm = 0;
       this.launchDx = this.selected === 3 ? 120 : this.selected === 2 ? 40 : 0;
+      const blurs = this.timeline.lookup ? this.timeline.lookup('root/sprite403#0') : null;
+      if (blurs) this.timeline.goto(blurs, this.selected, false);
+      else if (this.timeline.requestPlay) this.timeline.requestPlay('root/sprite403#0', this.selected, false);
       const chosen = this.penguinClip(this.selected);
       if (chosen) this.timeline.goto(chosen, 24, true);
       else this.timeline.requestPlay(`root/sprite380#0/sprite379#0/sprite378#p${this.selected}`, 24, true);
@@ -481,7 +486,7 @@
       this.panelFrame=65;
     }
     restart() {
-      if (this.mode!=='result') return;
+      if (this.mode!=='result' || this.panelFrame===140) return;
       this.audio.effect(96,0.65);
       this.mode='restarting';
       this.rootTime=0;
@@ -489,7 +494,7 @@
       this.setFrame(128);
     }
     submitScore() {
-      if (this.mode!=='result' || this.panelFrame===140) return;
+      if (this.mode!=='result' || (this.panelFrame!==72 && this.panelFrame!==103 && this.panelFrame!==179)) return;
       this.audio.effect(96,0.55);
       this.panelFrame=140;
       this.transitionTick=0;
@@ -497,6 +502,7 @@
 
     stagePoint(event) {
       const r=this.canvas.getBoundingClientRect();
+      if (!r.width || !r.height) return this.pointer;
       return {x:(event.clientX-r.left)*W/r.width,y:(event.clientY-r.top)*H/r.height};
     }
     hitArea(x,y) {
@@ -566,6 +572,9 @@
         this.canvas.style.cursor = !this.audio.unlocked || area ? 'pointer' : 'default';
         if (this.mode==='select') this.hoverPenguin(/^penguin[123]$/.test(area||'') ? +area.slice(-1) : 0);
       });
+      this.canvas.addEventListener('pointerleave', () => {
+        if (this.mode==='select' && !this.charging) this.hoverPenguin(0);
+      });
       this.canvas.addEventListener('pointerdown', e => {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.preventDefault();
@@ -615,7 +624,7 @@
       });
       document.addEventListener('keydown', e => {
         if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-        if (['Space','Enter','Digit1','Digit2','Digit3','KeyM'].includes(e.code))
+        if (HANDLED_KEYS.has(e.code))
           e.preventDefault();
         if (!this.audio.unlocked) {
           this.audio.unlock();
@@ -629,8 +638,8 @@
         else if (this.mode==='ending' && this.panelPhase==='hold' && (e.code==='Enter' || e.code==='Space'))
           this.continuePanel();
         else if (this.mode==='result' && (e.code==='Enter' || e.code==='Space')) {
-          if (this.panelFrame === 103) this.submitScore();
-          else this.restart();
+          if (this.panelFrame === 72 || this.panelFrame === 103 || this.panelFrame === 179) this.submitScore();
+          else if (this.panelFrame !== 140) this.restart();
         }
       });
     }

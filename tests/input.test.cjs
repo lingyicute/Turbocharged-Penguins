@@ -131,3 +131,39 @@ test("cancelling a penguin charge resets hover state and thank-you panel ignores
   app.submitScore();
   assert.equal(app.transitionTick, 50, "repeat submit on frame 140 does not reset timer");
 });
+
+test("keyboard penguin select updates sprite403 frame and result keydown respects panel state", async () => {
+  const {app, canvasEvents, documentEvents} = await createApp();
+  const blurs = {path: "root/sprite403#0", frame: 1, playing: false};
+  const clip3 = {path: "p3", frame: 1, playing: false};
+  app.timeline.penguins = new Map([["p3", clip3]]);
+  app.timeline.clips.set("root/sprite403#0", blurs);
+  app.timeline.clips.set("p3", clip3);
+  app.timeline.lookup = path => app.timeline.clips.get(path);
+  app.timeline.goto = (c, f, p) => { c.frame = f; c.playing = p; };
+  app.mode = "select";
+
+  canvasEvents.pointermove(pointer(360, 260));
+  assert.equal(app.hovered, 3);
+  canvasEvents.pointerleave();
+  assert.equal(app.hovered, 0, "pointerleave clears hover state");
+
+  documentEvents.keydown({code: "Digit3", repeat: false, preventDefault() {}});
+  assert.equal(app.mode, "launching");
+  assert.equal(blurs.frame, 3, "keyboard penguin selection positions launch blur on chosen penguin");
+
+  // Result screen: frame 72 submits, frame 140 ignores Enter/Space and restart(), frame 160 restarts
+  app.mode = "result";
+  app.panelFrame = 72;
+  documentEvents.keydown({code: "Enter", repeat: false, preventDefault() {}});
+  assert.equal(app.panelFrame, 140, "Enter on submit panel 72 submits score");
+  documentEvents.keydown({code: "Space", repeat: false, preventDefault() {}});
+  assert.equal(app.mode, "result", "Space on thank-you frame 140 does not prematurely restart");
+  app.restart();
+  assert.equal(app.mode, "result", "restart() is blocked on thank-you frame 140");
+  app.panelFrame = 160;
+  app.submitScore();
+  assert.equal(app.panelFrame, 160, "submitScore() is ignored on non-submit panel 160");
+  documentEvents.keydown({code: "Space", repeat: false, preventDefault() {}});
+  assert.equal(app.mode, "restarting", "Space on panel 160 triggers restart");
+});
