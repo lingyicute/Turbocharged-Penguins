@@ -113,6 +113,7 @@ Filters._unpremultiply = function (data) {
 
 
 Filters._boxBlurHorizontal = function (pixels, mask, w, h, radius, maskType) {
+    if (radius <= 0 && maskType == 0) return;
     var index = 0;
     var newColors = [];
 
@@ -179,6 +180,7 @@ Filters._boxBlurHorizontal = function (pixels, mask, w, h, radius, maskType) {
 };
 
 Filters._boxBlurVertical = function (pixels, mask, w, h, radius, maskType) {
+    if (radius <= 0 && maskType == 0) return;
     var newColors = [];
     var oldPixelOffset = -(radius + 1) * w * 4;
     var newPixelOffset = (radius) * w * 4;
@@ -950,12 +952,33 @@ cxform.prototype.apply = function (c) {
     return d;
 };
 
+cxform.prototype._getLuts = function () {
+    if (this._luts) return this._luts;
+    var rLut = new Uint8Array(256);
+    var gLut = new Uint8Array(256);
+    var bLut = new Uint8Array(256);
+    var aLut = new Uint8Array(256);
+    var r_mult = this.r_mult, g_mult = this.g_mult, b_mult = this.b_mult, a_mult = this.a_mult;
+    var r_add = this.r_add, g_add = this.g_add, b_add = this.b_add, a_add = this.a_add;
+    for (var v = 0; v < 256; v++) {
+        var r = Math.round(v * r_mult / 255 + r_add);
+        var g = Math.round(v * g_mult / 255 + g_add);
+        var b = Math.round(v * b_mult / 255 + b_add);
+        var a = Math.round(v * a_mult / 255 + a_add);
+        rLut[v] = r < 0 ? 0 : r > 255 ? 255 : r;
+        gLut[v] = g < 0 ? 0 : g > 255 ? 255 : g;
+        bLut[v] = b < 0 ? 0 : b > 255 ? 255 : b;
+        aLut[v] = a < 0 ? 0 : a > 255 ? 255 : a;
+    }
+    return (this._luts = [rLut, gLut, bLut, aLut]);
+};
+
 cxform.prototype.applyToImage = function (fimg) {
     if (this._empty || !fimg) {
         return fimg;
     }
-    var key = this.r_add + "," + this.g_add + "," + this.b_add + "," + this.a_add + "," +
-              this.r_mult + "," + this.g_mult + "," + this.b_mult + "," + this.a_mult;
+    var key = this._key || (this._key = this.r_add + "," + this.g_add + "," + this.b_add + "," + this.a_add + "," +
+              this.r_mult + "," + this.g_mult + "," + this.b_mult + "," + this.a_mult);
     // A pooled canvas is cleared and reused later, so it is neither a valid
     // cache holder (its _cxCache would outlive its pixels) nor a valid cache
     // value. Tint results are cached on source images only, and always get
@@ -974,17 +997,13 @@ cxform.prototype.applyToImage = function (fimg) {
     var imdata = ictx.getImageData(0, 0, icanvas.width, icanvas.height);
     var idata = imdata.data;
     var len = idata.length;
-    var r_mult = this.r_mult, g_mult = this.g_mult, b_mult = this.b_mult, a_mult = this.a_mult;
-    var r_add = this.r_add, g_add = this.g_add, b_add = this.b_add, a_add = this.a_add;
+    var luts = this._getLuts();
+    var rLut = luts[0], gLut = luts[1], bLut = luts[2], aLut = luts[3];
     for (var i = 0; i < len; i += 4) {
-        var r = Math.round(idata[i] * r_mult / 255 + r_add);
-        var g = Math.round(idata[i + 1] * g_mult / 255 + g_add);
-        var b = Math.round(idata[i + 2] * b_mult / 255 + b_add);
-        var a = Math.round((idata[i + 3] * a_mult / 255 + a_add));
-        idata[i] = r < 0 ? 0 : r > 255 ? 255 : r;
-        idata[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
-        idata[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
-        idata[i + 3] = a < 0 ? 0 : a > 255 ? 255 : a;
+        idata[i] = rLut[idata[i]];
+        idata[i + 1] = gLut[idata[i + 1]];
+        idata[i + 2] = bLut[idata[i + 2]];
+        idata[i + 3] = aLut[idata[i + 3]];
     }
     ictx.putImageData(imdata, 0, 0);
     if (cacheable) cache[key] = icanvas;
@@ -1660,7 +1679,7 @@ function drawPath(ctx, p, doStroke, scaleMode) {
     proto.clip = function () {
         var b = this._pathBox;
         this._clipBox = (b && b.n && this._matrix)
-            ? {minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY, m: this._matrix.slice()}
+            ? {minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY, m: this._matrix}
             : null;
         return origClip.apply(this, arguments);
     };
