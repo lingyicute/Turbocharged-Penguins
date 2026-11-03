@@ -84,7 +84,6 @@
         turboSustained: false,
         turbo: false,
         turboDuration: 0,
-        turboExit: 0,
         turbos: 0,
         turboClickedToggle: false,
         clickedBonus: false,
@@ -94,8 +93,6 @@
         finalScore: '',
         tiles: new Map(),
         anim: null,
-        animTicks: 0,
-        pengFrame: 0,
         firstTurbo: true,
         pointerStatus: false,
         dontfallToggle: false,
@@ -104,7 +101,6 @@
         dummyY: -70,
         explX: null,
         explY: null,
-        explOn: false,
         cues: []
       };
     }
@@ -307,7 +303,6 @@
       g.vx=clamp((g.x-clickX)/sensitivity+(rand(randomness)-randomness/2)/10,-maxX,maxX);
       g.rotVelocity=CONFIG.penguinMaxRot*(g.vx/3);
       if (g.anim == null || Math.random() * 100 > 50) g.anim = rand(12) + 1;
-      g.animTicks = 0;
       const label = window.PENGUIN_LABEL_FRAME?.[g.anim] || 1;
       play(g, PATH.penguin, label, true);
     }
@@ -319,7 +314,6 @@
         g.booster=CONFIG.boosterY;
         g.turbo='speedup';
         g.anim='blur';
-        g.animTicks=0;
         g.turboDuration=g.turbos*2*CONFIG.sustainPerTurbo;
         g.rotation=0;g.vx=0;
         g.turboSustained=false;g.regularSustained=false;
@@ -328,7 +322,7 @@
       } else {
         g.vy*=2;
       }
-      g.turbos=0;g.turboExit=12;
+      g.turbos=0;
       play(g, PATH.turbos, null, true);
       play(g, PATH.turboDisplay, null, true);
       return true;

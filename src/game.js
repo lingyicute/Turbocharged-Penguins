@@ -5,12 +5,6 @@
   'use strict';
 
   const W = 620, H = 360, FPS = 36, FRAME_MS = 1000 / FPS, PHYS_MS = 12;
-  const PENGUIN_ANIMS = Object.freeze({
-    1: [1, 39], 2: [40, 46], 3: [47, 82], 4: [83, 109],
-    5: [110, 130], 6: [147, 147], 7: [148, 148], 8: [149, 157],
-    9: [158, 166], 10: [167, 183], 11: [184, 190], 12: [191, 200],
-    blur: [201, 218], spin: [219, 219]
-  });
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const scoreString = cm => (Math.max(0, cm) / 100).toFixed(2) + 'm';
   const SINGLE_CUE_IDS = Object.freeze(new Set([5, 7, 294, 382, 402, 403, 418, 423, 550, 553, 555, 565, 569, 578, 579]));
@@ -198,14 +192,14 @@
         this.displayCm, this.launchDx || 0);
       if (g) {
         current.push(g.x, g.y, g.bgX, g.bgY, g.farX, g.farY, g.rotation, g.cm, g.vy, g.turbos,
-          g.anim, g.pengFrame, g.explX, g.explY, g.dummyX, g.dummyY,
+          g.anim, g.explX, g.explY, g.dummyX, g.dummyY,
           g.pointerStatus ? 1 : 0, g.turboClickedToggle ? 1 : 0);
         // Fading bonuses animate on idle/result screens; during pure gameplay
         // flight they're transient and don't affect the header-no-change case.
         if (g.tiles && this.mode !== 'playing') {
           for (const tile of g.tiles.values()) {
             for (const b of tile.bonuses) {
-              if (b.collected && this.now - b.collected < 600)
+              if (b.collected && this.now - b.collected <= 560)
                 current.push('f', b.x, (this.now - b.collected) | 0);
             }
           }
@@ -247,13 +241,6 @@
         return;
       }
       this.timeline.advance();
-      const g = this.game;
-      if (g) {
-        g.animTicks++;
-        const [lo,hi] = PENGUIN_ANIMS[g.anim] || PENGUIN_ANIMS[1];
-        g.pengFrame = Math.min(hi, lo + g.animTicks - 1) - 1;
-        if (g.turboExit) g.turboExit--;
-      }
       switch (this.mode) {
         case 'intro': this.advanceIntro(); break;
         case 'menuIn':
