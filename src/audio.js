@@ -56,6 +56,7 @@
       this.bedBuffer = null;
       this.bedPending = false;
       this.hiddenPaused = false;
+      this.hiddenAt = 0;
       this.musicWasPlaying = false;
 
       try {
@@ -110,6 +111,10 @@
       // The output has switched from AudioParam to HTMLMediaElement.volume.
       this.lastMusicVolume = null;
       this.setMusicVolume(this.muted ? 0 : this.fade * this.musicVolume);
+      if (this.hiddenPaused) {
+        this.musicWasPlaying = true;
+        return;
+      }
       try {
         Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; });
       } catch (_) {
@@ -119,7 +124,7 @@
 
     startBed() {
       if (this.bed || !this.bedBuffer || !this.audioContext) return;
-      if (this.audioContext.state === 'suspended') this.audioContext.resume().catch(() => {});
+      if (!this.hiddenPaused && this.audioContext.state === 'suspended') this.audioContext.resume().catch(() => {});
       const src = this.audioContext.createBufferSource();
       const gain = this.audioContext.createGain();
       src.buffer = this.bedBuffer;
@@ -275,7 +280,7 @@
         this.loadStingBuffer();
         return;
       }
-      if (this.audioContext.state === 'suspended') this.audioContext.resume().catch(() => {});
+      if (!this.hiddenPaused && this.audioContext.state === 'suspended') this.audioContext.resume().catch(() => {});
       const src = this.audioContext.createBufferSource();
       const gain = this.audioContext.createGain();
       src.buffer = this.stingBuffer;
@@ -381,7 +386,10 @@
     setHidden(hidden) {
       const ctx = this.audioContext;
       if (hidden) {
-        this.hiddenPaused = true;
+        if (!this.hiddenPaused) {
+          this.hiddenPaused = true;
+          this.hiddenAt = typeof performance !== 'undefined' ? performance.now() : 0;
+        }
         if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
         if (!this.music.paused) {
           this.musicWasPlaying = true;
@@ -391,6 +399,10 @@
       }
       if (!this.hiddenPaused) return;
       this.hiddenPaused = false;
+      if (this.stingStarted && this.hiddenAt && typeof performance !== 'undefined') {
+        this.stingStarted += Math.max(0, performance.now() - this.hiddenAt);
+      }
+      this.hiddenAt = 0;
       if (!this.unlocked) return;
       if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
       if (this.musicWasPlaying) {

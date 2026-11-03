@@ -370,3 +370,46 @@ test('hiding the page suspends audio and showing it resumes the music', async ()
   audio.setHidden(false);
   assert.deepEqual(log, [], 'showing an already visible page does nothing');
 });
+
+test("decoding finishing while hidden does not resume the context or lose sting time", async () => {
+  const first = deferred();
+  let resumed = 0;
+  let now = 1000;
+  class FakeAudio {
+    constructor() { this.paused = true; }
+    play() { this.paused = false; return Promise.resolve(); }
+    pause() { this.paused = true; }
+  }
+  class FakeAudioContext {
+    constructor() { this.state = "running"; this.destination = {}; this.currentTime = 0; }
+    suspend() { this.state = "suspended"; return Promise.resolve(); }
+    resume() { this.state = "running"; resumed++; return Promise.resolve(); }
+    decodeAudioData() { return Promise.resolve({}); }
+    createBufferSource() { return {connect: n => n, start() {}, stop() {}}; }
+    createGain() { return {gain: {value: 0, setValueAtTime() {}}, connect: n => n}; }
+  }
+  const window = {AudioContext: FakeAudioContext};
+  const context = vm.createContext({
+    window,
+    Audio: FakeAudio,
+    fetch: url => isMusic(url) ? first.promise : Promise.reject(new Error("unused")),
+    performance: {now: () => now}
+  });
+  loadSource(context, "audio.js");
+  const audio = new window.GameAudio();
+  audio.seamlessLoops = () => ({});
+  audio.seamlessLoop = () => ({});
+  audio.unlock();
+  audio.playIntroSting();
+  audio.setHidden(true);
+  resumed = 0;
+  first.resolve({arrayBuffer: () => Promise.resolve(new ArrayBuffer(1))});
+  await nextTick();
+  assert.equal(resumed, 0, "context stays suspended while hidden");
+  assert.equal(audio.audioContext.state, "suspended");
+  now = 11000;
+  audio.setHidden(false);
+  assert.equal(resumed, 1, "context resumes when visible again");
+  audio.applyStingEnvelope();
+  assert.ok(audio.sting, "sting is not killed by time elapsed while hidden");
+});
