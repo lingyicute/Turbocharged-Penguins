@@ -91,8 +91,15 @@
     }
 
     end() {
-      for (const [path, clip] of this.clips)
-        if (clip.seen !== this.renderNumber) this.clips.delete(path);
+      for (const [path, clip] of this.clips) {
+        if (clip.seen !== this.renderNumber) {
+          this.clips.delete(path);
+          if (this.byId.get(clip.id) === clip) this.byId.delete(clip.id);
+          if (clip.id === 378) {
+            for (const [k, v] of this.penguins) if (v === clip) this.penguins.delete(k);
+          }
+        }
+      }
       this.stackIndex = -1;
     }
 

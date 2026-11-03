@@ -114,6 +114,8 @@ test('visual state comparison reuses buffers and detects gameplay, clip, and fad
   const clip = {id: 900, frame: 1, playing: true};
   app.timeline.clips.set('root/sprite900#0', clip);
   assert.equal(app.visualStateChanged(), true, 'new timeline clips change the view');
+  assert.equal(app.visualStateChanged(), false, 'unchanged clip state is skipped');
+  assert.equal(app.visualStateChanged(true), false, 'fast check also skips unchanged state with clips');
   clip.frame++;
   assert.equal(app.visualStateChanged(), true, 'clip frames are tracked');
 
@@ -412,4 +414,25 @@ test("decoding finishing while hidden does not resume the context or lose sting 
   assert.equal(resumed, 1, "context resumes when visible again");
   audio.applyStingEnvelope();
   assert.ok(audio.sting, "sting is not killed by time elapsed while hidden");
+});
+
+test("timeline.end cleans up unseen clips from byId and penguins maps", () => {
+  const window = {FRAME_SOUNDS: {}, sprite378: function() { var frame_cnt = 26; }, sprite379: function() { var frame_cnt = 38; }};
+  const context = vm.createContext({window});
+  loadSource(context, "timeline.js");
+  const timeline = new window.ClipTimelines({rootFrame: 55});
+  timeline.begin();
+  timeline.enter("sprite379");
+  const p1 = timeline.enter("sprite378");
+  timeline.leave();
+  timeline.leave();
+  timeline.end();
+  assert.equal(timeline.byId.get(378), p1);
+  assert.equal(timeline.penguins.get("p3"), p1);
+
+  // Next render does not visit sprite379/sprite378
+  timeline.begin();
+  timeline.end();
+  assert.equal(timeline.byId.has(378), false);
+  assert.equal(timeline.penguins.size, 0);
 });
