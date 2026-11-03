@@ -1792,17 +1792,29 @@ function drawRightGlyphs(ctx, font, color, phrase, fu, size, right, baseline) {
         width += fu[ch] * size;
     }
     x = right - width;
+    var m = ctx._matrix, batch = !!(m && ctx.setTransform);
+    var m0, m1, m2, m3, m4, m5;
+    if (batch) {
+        m0 = m[0]; m1 = m[1]; m2 = m[2]; m3 = m[3]; m4 = m[4]; m5 = m[5];
+        ctx.save();
+    }
     for (i = 0; i < phrase.length; i++) {
         ch = phrase.charAt(i);
         if (!Object.prototype.hasOwnProperty.call(fu, ch)) continue;
         if (ch !== " ") {
-            ctx.save();
-            ctx.transform(size, 0, 0, size, x, baseline);
-            font(ctx, ch, color);
-            ctx.restore();
+            if (batch) {
+                ctx.setTransform(m0 * size, m1 * size, m2 * size, m3 * size, m0 * x + m2 * baseline + m4, m1 * x + m3 * baseline + m5);
+                font(ctx, ch, color);
+            } else {
+                ctx.save();
+                ctx.transform(size, 0, 0, size, x, baseline);
+                font(ctx, ch, color);
+                ctx.restore();
+            }
         }
         x += fu[ch] * size;
     }
+    if (batch) ctx.restore();
 }
 function drawCenterGlyphs(ctx, font, color, phrase, fu, size, anchor, baseline) {
     var width = 0, i, ch, step, x;
@@ -1811,15 +1823,27 @@ function drawCenterGlyphs(ctx, font, color, phrase, fu, size, anchor, baseline) 
         width += (step == null || step !== step) ? 0 : step * size;
     }
     x = anchor - width / 2;
+    var m = ctx._matrix, batch = !!(m && ctx.setTransform);
+    var m0, m1, m2, m3, m4, m5;
+    if (batch) {
+        m0 = m[0]; m1 = m[1]; m2 = m[2]; m3 = m[3]; m4 = m[4]; m5 = m[5];
+        ctx.save();
+    }
     for (i = 0; i < phrase.length; i++) {
         ch = phrase.charAt(i);
         if (ch !== " ") {
-            ctx.save();
-            ctx.transform(size, 0, 0, size, x, baseline);
-            font(ctx, ch, color);
-            ctx.restore();
+            if (batch) {
+                ctx.setTransform(m0 * size, m1 * size, m2 * size, m3 * size, m0 * x + m2 * baseline + m4, m1 * x + m3 * baseline + m5);
+                font(ctx, ch, color);
+            } else {
+                ctx.save();
+                ctx.transform(size, 0, 0, size, x, baseline);
+                font(ctx, ch, color);
+                ctx.restore();
+            }
         }
         step = fu[ch];
         x += (step == null || step !== step) ? 0 : step * size;
     }
+    if (batch) ctx.restore();
 }
