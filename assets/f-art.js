@@ -753,9 +753,13 @@ function font8(ctx,ch,textColor){
 
 function text9(ctx,ctrans,frame,ratio,time){
 	var textColor = tocolor(ctrans.apply([0,0,0,1]));
-	var size = 0.390625;
-	var adv = scaleAdvances({T:431.2,a:436.9,p:457," ":191.1,t:293.5,o:428.5,s:401.8,r:328.8}, size);
-	drawPlacedGlyphs(ctx, font8, textColor, layoutGlyphs("Tap to start", adv, size, 360, 1438.5, true));
+	var g = text9._g;
+	if (!g) {
+		var size = 0.390625;
+		var adv = scaleAdvances({T:431.2,a:436.9,p:457," ":191.1,t:293.5,o:428.5,s:401.8,r:328.8}, size);
+		g = text9._g = layoutGlyphs("Tap to start", adv, size, 360, 1438.5, true);
+	}
+	drawPlacedGlyphs(ctx, font8, textColor, g);
 }
 function sprite10(ctx,ctrans,frame,ratio,time){
 	var clips = [];
@@ -2967,7 +2971,8 @@ function text90(ctx,ctrans,frame,ratio,time){
 	var app = window.TurboPenguins;
 	if (!app || !app.game || !app.game.finalScore) return;
 	var textColor = tocolor(ctrans.apply([183,0,157,1]));
-	drawCenterGlyphs(ctx, font89, textColor, app.game.finalScore, {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381}, 0.9765625, 2223, 850);
+	var adv = text90._adv || (text90._adv = {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381});
+	drawCenterGlyphs(ctx, font89, textColor, app.game.finalScore, adv, 0.9765625, 2223, 850);
 }
 function sprite91(ctx,ctrans,frame,ratio,time){
 	var clips = [];
@@ -3078,12 +3083,16 @@ function sprite98(ctx,ctrans,frame,ratio,time){
 function text99(ctx,ctrans,frame,ratio,time){
 	// " Juggle him" -> " Juggle her". Tail keeps the original run, shifted 40 left.
 	var textColor = tocolor(ctrans.apply([13,83,114,1]));
-	var s = 0.2734375, y = 240;
-	var head = [[32,1220],[74,1274],[117,1392],[103,1520],[103,1645],[108,1770],[101,1844],[32,1965],[104,2019],[101,2146],[114,2267]];
-	var tail = [[32,2402],[105,2456],[110,2519],[32,2647],[116,2701],[104,2783],[101,2910],[32,3031],[97,3085],[105,3206],[114,3269],[32,3364],[116,3418],[111,3500],[32,3621],[103,3675],[101,3800],[116,3921],[32,4003],[102,4057],[117,4138],[114,4266],[116,4361],[104,4443],[101,4570],[114,4691],[32,4786],[117,4840],[112,4968],[46,5093]];
-	var glyphs = [], i;
-	for (i = 0; i < head.length; i++) glyphs.push([String.fromCharCode(head[i][0]), s, head[i][1], y]);
-	for (i = 0; i < tail.length; i++) glyphs.push([String.fromCharCode(tail[i][0]), s, tail[i][1] - 40, y]);
+	var glyphs = text99._g;
+	if (!glyphs) {
+		var s = 0.2734375, y = 240;
+		var head = [[32,1220],[74,1274],[117,1392],[103,1520],[103,1645],[108,1770],[101,1844],[32,1965],[104,2019],[101,2146],[114,2267]];
+		var tail = [[32,2402],[105,2456],[110,2519],[32,2647],[116,2701],[104,2783],[101,2910],[32,3031],[97,3085],[105,3206],[114,3269],[32,3364],[116,3418],[111,3500],[32,3621],[103,3675],[101,3800],[116,3921],[32,4003],[102,4057],[117,4138],[114,4266],[116,4361],[104,4443],[101,4570],[114,4691],[32,4786],[117,4840],[112,4968],[46,5093]];
+		glyphs = [];
+		for (var i = 0; i < head.length; i++) glyphs.push([String.fromCharCode(head[i][0]), s, head[i][1], y]);
+		for (i = 0; i < tail.length; i++) glyphs.push([String.fromCharCode(tail[i][0]), s, tail[i][1] - 40, y]);
+		text99._g = glyphs;
+	}
 	drawPlacedGlyphs(ctx, font8, textColor, glyphs);
 }
 function text100(ctx,ctrans,frame,ratio,time){
@@ -3294,8 +3303,12 @@ function sprite102(ctx,ctrans,frame,ratio,time){
 
 function text103(ctx,ctrans,frame,ratio,time){
 	var textColor = tocolor(ctrans.apply([183,0,157,1]));
-	var adv = {" ":50,"0":118,"1":93,"2":118,R:142,a:117,b:121,c:110,d:121,e:117,g:121,h:123,l:70,m:189,n:124,o:117,r:91,s:111,t:78,".":68};
-	drawPlacedGlyphs(ctx, font8, textColor, layoutGlyphs("Reach 120m to get on the leaderboard.", adv, 0.2734375, 240, 2320.5, true));
+	var g = text103._g;
+	if (!g) {
+		var adv = {" ":50,"0":118,"1":93,"2":118,R:142,a:117,b:121,c:110,d:121,e:117,g:121,h:123,l:70,m:189,n:124,o:117,r:91,s:111,t:78,".":68};
+		g = text103._g = layoutGlyphs("Reach 120m to get on the leaderboard.", adv, 0.2734375, 240, 2320.5, true);
+	}
+	drawPlacedGlyphs(ctx, font8, textColor, g);
 }
 function shape104(ctx,ctrans,frame,ratio,time){
 	var pathData="M -535 -890 L -535 890 535 890 535 -890 -535 -890";
@@ -3313,12 +3326,16 @@ function shape106(ctx,ctrans,frame,ratio,time){
 
 function text113(ctx,ctrans,frame,ratio,time){
 	var textColor = tocolor(ctrans.apply([13,83,114,1]));
-	var s = 0.37109375;
-	var line1 = [[84,20],[117,180],[114,347],[98,469],[111,632],[99,791],[104,940],[97,1107],[114,1266],[103,1388],[101,1551],[32,1710],[121,1777],[111,1927],[117,2086],[114,2253],[32,2375],[112,2442],[101,2605],[110,2764],[103,2931],[117,3094],[105,3261],[110,3341],[32,3508],[119,3575],[105,3806],[116,3886],[104,3992],[32,4159]];
-	var glyphs = [], i;
-	for (i = 0; i < line1.length; i++) glyphs.push([String.fromCharCode(line1[i][0]), s, line1[i][1], 320]);
-	var adv = {t:106,h:167,e:159," ":67,b:163,o:159,n:167,u:167,s:150,i:80,c:149,".":94};
-	drawPlacedGlyphs(ctx, font8, textColor, glyphs.concat(layoutGlyphs("the bonus icons.", adv, s, 760, 2092, true)));
+	var glyphs = text113._g;
+	if (!glyphs) {
+		var s = 0.37109375;
+		var line1 = [[84,20],[117,180],[114,347],[98,469],[111,632],[99,791],[104,940],[97,1107],[114,1266],[103,1388],[101,1551],[32,1710],[121,1777],[111,1927],[117,2086],[114,2253],[32,2375],[112,2442],[101,2605],[110,2764],[103,2931],[117,3094],[105,3261],[110,3341],[32,3508],[119,3575],[105,3806],[116,3886],[104,3992],[32,4159]];
+		var g1 = [];
+		for (var i = 0; i < line1.length; i++) g1.push([String.fromCharCode(line1[i][0]), s, line1[i][1], 320]);
+		var adv = {t:106,h:167,e:159," ":67,b:163,o:159,n:167,u:167,s:150,i:80,c:149,".":94};
+		glyphs = text113._g = g1.concat(layoutGlyphs("the bonus icons.", adv, s, 760, 2092, true));
+	}
+	drawPlacedGlyphs(ctx, font8, textColor, glyphs);
 }
 function shape114(ctx,ctrans,frame,ratio,time){
 	var pathData="M 3405 -890 Q 3625 -890 3625 -670 L 3625 474 Q 3625 694 3405 694 L -3285 694 Q -3505 694 -3505 474 L -3505 -670 Q -3505 -890 -3285 -890 L 3405 -890";
@@ -3425,14 +3442,13 @@ function font115(ctx,ch,textColor){
 
 function text116(ctx,ctrans,frame,ratio,time){
 	var textColor = tocolor(ctrans.apply([198,49,181,1]));
-	var size = 0.3515625;
-	var adv = scaleAdvances({L:424.4,E:475.6,A:550.7,D:565.6,R:564.9,B:611.4,O:536.4}, size);
-	// This field is placed at (-1048, -656). Glyph x/y are local; do not subtract
-	// that translation again. Baseline 280 is the original run. The box and the
-	// record line are centered at parent x=60, which is local 1108. font82's
-	// side bearings put the ink 26 units right of the advance center, so the
-	// anchor is 1082. sprite127 carries this field on both panels.
-	drawPlacedGlyphs(ctx, font82, textColor, layoutGlyphs("LEADERBOARD", adv, size, 280, 1082, true));
+	var g = text116._g;
+	if (!g) {
+		var size = 0.3515625;
+		var adv = scaleAdvances({L:424.4,E:475.6,A:550.7,D:565.6,R:564.9,B:611.4,O:536.4}, size);
+		g = text116._g = layoutGlyphs("LEADERBOARD", adv, size, 280, 1082, true);
+	}
+	drawPlacedGlyphs(ctx, font82, textColor, g);
 }
 function shape118(ctx,ctrans,frame,ratio,time){
 	var pathData="M 1183 -501 Q 1284 -268 1284 0 1282 268 1183 499 1084 732 909 908 733 1083 500 1184 269 1283 1 1285 -267 1283 -500 1184 -731 1085 -908 908 -1084 732 -1183 499 -1282 268 -1284 0 -1282 -268 -1183 -501 -1084 -732 -908 -909 -731 -1085 -500 -1184 -267 -1283 1 -1285 269 -1283 500 -1184 733 -1085 909 -909 1084 -732 1183 -501";
@@ -4794,12 +4810,16 @@ function sprite191(ctx,ctrans,frame,ratio,time){
 
 function text192(ctx,ctrans,frame,ratio,time){
 	var textColor = tocolor(ctrans.apply([13,83,114,1]));
-	var s = 0.3125, y1 = 260;
-	var line1 = [["Y",1260],["o",1389],["u",1518],["r",1654],[" ",1752],["s",1803],["c",1925],["o",2046],["r",2175],["e",2273],[" ",2402],["h",2453],["a",2589],["s",2718],[" ",2840],["n",2891],["o",3027],["w",3156],[" ",3345],["b",3396],["e",3529],["e",3658],["n",3787],[" ",3923],["s",3974],["u",4096],["b",4232],["m",4365],["i",4576],["t",4638],["t",4722],["e",4806],["d",4935],[" ",5068],["t",5119],["o",5203],[" ",5332],["t",5383],["h",5467],["e",5603]];
-	var glyphs = [], i;
-	for (i = 0; i < line1.length; i++) glyphs.push([line1[i][0], s, line1[i][1], y1]);
-	var adv = scaleAdvances({" ":51,".":79,a:129,b:133,d:133,e:129,l:84,o:129,r:98}, 1);
-	drawPlacedGlyphs(ctx, font8, textColor, glyphs.concat(layoutGlyphs("leaderboard.", adv, s, 620, 3493, true)));
+	var glyphs = text192._g;
+	if (!glyphs) {
+		var s = 0.3125, y1 = 260;
+		var line1 = [["Y",1260],["o",1389],["u",1518],["r",1654],[" ",1752],["s",1803],["c",1925],["o",2046],["r",2175],["e",2273],[" ",2402],["h",2453],["a",2589],["s",2718],[" ",2840],["n",2891],["o",3027],["w",3156],[" ",3345],["b",3396],["e",3529],["e",3658],["n",3787],[" ",3923],["s",3974],["u",4096],["b",4232],["m",4365],["i",4576],["t",4638],["t",4722],["e",4806],["d",4935],[" ",5068],["t",5119],["o",5203],[" ",5332],["t",5383],["h",5467],["e",5603]];
+		var g1 = [];
+		for (var i = 0; i < line1.length; i++) g1.push([line1[i][0], s, line1[i][1], y1]);
+		var adv = scaleAdvances({" ":51,".":79,a:129,b:133,d:133,e:129,l:84,o:129,r:98}, 1);
+		glyphs = text192._g = g1.concat(layoutGlyphs("leaderboard.", adv, s, 620, 3493, true));
+	}
+	drawPlacedGlyphs(ctx, font8, textColor, glyphs);
 }
 function sprite198(ctx,ctrans,frame,ratio,time){
 	var clips = [];
@@ -7807,9 +7827,13 @@ function sprite253(ctx,ctrans,frame,ratio,time){
 
 function text254(ctx,ctrans,frame,ratio,time){
 	var textColor = tocolor(ctrans.apply([13,83,114,1]));
-	var adv = {" ":44,"0":108,"1":84,"2":108,Y:107,T:108,a:107,b:110,c:100,d:110,e:107,g:110,h:112,i:53,l:63,m:173,o:107,r:82,s:101,t:70,u:113,y:101};
-	var center = 3549;
-	drawPlacedGlyphs(ctx, font8, textColor, layoutGlyphs("You must reach 120m to submit your score", adv, 0.25390625, 220, center, true).concat(layoutGlyphs("to the leaderboard", adv, 0.25390625, 540, center, true)));
+	var g = text254._g;
+	if (!g) {
+		var adv = {" ":44,"0":108,"1":84,"2":108,Y:107,T:108,a:107,b:110,c:100,d:110,e:107,g:110,h:112,i:53,l:63,m:173,o:107,r:82,s:101,t:70,u:113,y:101};
+		var center = 3549;
+		g = text254._g = layoutGlyphs("You must reach 120m to submit your score", adv, 0.25390625, 220, center, true).concat(layoutGlyphs("to the leaderboard", adv, 0.25390625, 540, center, true));
+	}
+	drawPlacedGlyphs(ctx, font8, textColor, g);
 }
 function sprite255(ctx,ctrans,frame,ratio,time){
 	var clips = [];
@@ -9114,9 +9138,13 @@ function sprite257(ctx,ctrans,frame,ratio,time){
 
 function text258(ctx,ctrans,frame,ratio,time){
 	var textColor = tocolor(ctrans.apply([13,83,114,1]));
-	var size = 0.3515625;
-	var adv = scaleAdvances({M:665.6,b:436.9,l:270.6,i:230.4,n:466.8,g:454.8,y:413,c:395.9,u:450,t:293.5,e:436.9,m:691.2,a:436.9,d:442.5," ":191.1,w:636.3,h:450,o:428.5,v:420}, size);
-	drawPlacedGlyphs(ctx, font8, textColor, layoutGlyphs("Made with love by lingyicute", adv, size, 360, 2589.8, true));
+	var g = text258._g;
+	if (!g) {
+		var size = 0.3515625;
+		var adv = scaleAdvances({M:665.6,b:436.9,l:270.6,i:230.4,n:466.8,g:454.8,y:413,c:395.9,u:450,t:293.5,e:436.9,m:691.2,a:436.9,d:442.5," ":191.1,w:636.3,h:450,o:428.5,v:420}, size);
+		g = text258._g = layoutGlyphs("Made with love by lingyicute", adv, size, 360, 2589.8, true);
+	}
+	drawPlacedGlyphs(ctx, font8, textColor, g);
 }
 function sprite259(ctx,ctrans,frame,ratio,time){
 	var clips = [];
@@ -16409,13 +16437,17 @@ function sprite406(ctx,ctrans,frame,ratio,time){
 
 function text407(ctx,ctrans,frame,ratio,time){
 	var textColor = tocolor(ctrans.apply([255,255,255,1]));
-	var a = 0.4296875, b = 0.78125, c = 0.5859375, y = 640;
-	drawPlacedGlyphs(ctx, font82, textColor, [
-		["b",a,1080,y],["o",a,1318,y],["u",a,1530,y],["n",a,1757,y],["c",a,1971,y],["e",a,2181,y],[" ",a,2397,y],["h",a,2500,y],["e",a,2731,y],["r",a,2947,y],[" ",a,3116,y],
-		["a",b,3285,y],["s",b,3691,y],[" ",b,4084,y],["h",b,4278,y],["i",b,4704,y],["g",b,4935,y],["h",b,5377,y],
-		[" ",c,5803,y],
-		["a",a,5946,y],["s",a,6166,y],[" ",a,6378,y],["y",a,6481,y],["o",a,6686,y],["u",a,6898,y],[" ",a,7125,y],["c",a,7228,y],["a",a,7438,y],["n",a,7658,y],["!",a,7872,y]
-	]);
+	var g = text407._g;
+	if (!g) {
+		var a = 0.4296875, b = 0.78125, c = 0.5859375, y = 640;
+		g = text407._g = [
+			["b",a,1080,y],["o",a,1318,y],["u",a,1530,y],["n",a,1757,y],["c",a,1971,y],["e",a,2181,y],[" ",a,2397,y],["h",a,2500,y],["e",a,2731,y],["r",a,2947,y],[" ",a,3116,y],
+			["a",b,3285,y],["s",b,3691,y],[" ",b,4084,y],["h",b,4278,y],["i",b,4704,y],["g",b,4935,y],["h",b,5377,y],
+			[" ",c,5803,y],
+			["a",a,5946,y],["s",a,6166,y],[" ",a,6378,y],["y",a,6481,y],["o",a,6686,y],["u",a,6898,y],[" ",a,7125,y],["c",a,7228,y],["a",a,7438,y],["n",a,7658,y],["!",a,7872,y]
+		];
+	}
+	drawPlacedGlyphs(ctx, font82, textColor, g);
 }
 function sprite408(ctx,ctrans,frame,ratio,time){
 	var clips = [];
@@ -17359,7 +17391,8 @@ function text420(ctx,ctrans,frame,ratio,time){
 	var cm = app && app.game && app.game.cm != null ? app.game.cm : (app && app.displayCm) || 0;
 	var str = (Math.max(0, cm) / 100).toFixed(2) + "m";
 	var textColor = tocolor(ctrans.apply([255,255,255,1]));
-	drawRightGlyphs(ctx, font89, textColor, str, {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381}, 0.5859375, 2202, 500);
+	var adv = text420._adv || (text420._adv = {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381});
+	drawRightGlyphs(ctx, font89, textColor, str, adv, 0.5859375, 2202, 500);
 }
 function shape421(ctx,ctrans,frame,ratio,time){
 	var pathData="M -76 152 L -76 -153 76 -1 -76 152";
@@ -21935,7 +21968,8 @@ function text516(ctx,ctrans,frame,ratio,time){
 	var best = app && app.storedBest != null ? app.storedBest : 0;
 	var str = (Math.max(0, best) / 100).toFixed(2) + "m";
 	var textColor = tocolor(ctrans.apply([204,0,0,1]));
-	drawCenterGlyphs(ctx, font89, textColor, str, {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381}, 0.48828125, 833, 417);
+	var adv = text516._adv || (text516._adv = {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381});
+	drawCenterGlyphs(ctx, font89, textColor, str, adv, 0.48828125, 833, 417);
 }
 function shape517(ctx,ctrans,frame,ratio,time){
 	var pathData="M 1403 -229 Q 1444 -188 1444 -130 L 1444 517 Q 1444 575 1403 616 1362 657 1304 657 L -633 657 -633 -270 1304 -270 Q 1362 -270 1403 -229";
@@ -21993,7 +22027,8 @@ function text519(ctx,ctrans,frame,ratio,time){
 	var best = app && app.storedBest != null ? app.storedBest : 0;
 	var str = (Math.max(0, best) / 100).toFixed(2) + "m";
 	var textColor = tocolor(ctrans.apply([183,0,157,1]));
-	drawCenterGlyphs(ctx, font89, textColor, str, {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381}, 0.46875, 833, 400);
+	var adv = text519._adv || (text519._adv = {".":190,"m":606,"0":381,"1":381,"2":381,"3":381,"4":381,"5":381,"6":381,"7":381,"8":381,"9":381});
+	drawCenterGlyphs(ctx, font89, textColor, str, adv, 0.46875, 833, 400);
 }
 function sprite520(ctx,ctrans,frame,ratio,time){
 	var clips = [];
@@ -22613,7 +22648,8 @@ function text547(ctx,ctrans,frame,ratio,time){
 	var app = window.TurboPenguins;
 	var n = app && app.game && app.game.turbos != null ? app.game.turbos : 0;
 	var textColor = tocolor(ctrans.apply([183,12,157,1]));
-	drawRightGlyphs(ctx, font8, textColor, "x" + n, {"x":435,"0":447,"1":353,"2":447,"3":447,"4":447,"5":447,"6":447,"7":447,"8":447,"9":447}, 1.07421875, 1906, 825);
+	var adv = text547._adv || (text547._adv = {"x":435,"0":447,"1":353,"2":447,"3":447,"4":447,"5":447,"6":447,"7":447,"8":447,"9":447});
+	drawRightGlyphs(ctx, font8, textColor, "x" + n, adv, 1.07421875, 1906, 825);
 }
 function sprite548(ctx,ctrans,frame,ratio,time){
 	var clips = [];

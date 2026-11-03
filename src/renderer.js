@@ -395,11 +395,6 @@
       }
       return glyphs;
     }
-    scaledAdv(fu, size) {
-      const adv = {};
-      for (const ch of Object.keys(fu)) adv[ch] = fu[ch] * size;
-      return adv;
-    }
     // Record, or the empty-state line, in the open area under the title.
     // sprite127 is on the menu and inside the Awesome panel (sprite189).
     // saveBest has already replaced storedBest, so that panel keeps the
@@ -409,11 +404,15 @@
       const onAwesome = this.app.timeline.parent()?.id === 189;
       const best = (onAwesome ? this.app.beatenBest : this.app.storedBest) || 0;
       if (best > 12000) {
-        const size = 1.05;
-        const baseline = 150 + (735 * size) / 2;
-        this.placedGlyphs(ctx, window.font89, col, this.layoutTracked(
-          scoreString(best), FONT89_ADV_105, size, baseline, 60, true
-        ));
+        if (this._bestGlyphsCm !== best) {
+          const size = 1.05;
+          const baseline = 150 + (735 * size) / 2;
+          this._bestGlyphsCm = best;
+          this._bestGlyphs = this.layoutTracked(
+            scoreString(best), FONT89_ADV_105, size, baseline, 60, true
+          );
+        }
+        this.placedGlyphs(ctx, window.font89, col, this._bestGlyphs);
         return;
       }
       if (!this._noRecordGlyphs) {
@@ -435,11 +434,14 @@
       }
       const teal = window.tocolor(ctrans.apply([13, 83, 114, 1]));
       this.placedGlyphs(ctx, window.font8, teal, this._awesomeGlyphs);
-      const big = 1.75;
+      if (this._scoreGlyphsText !== score) {
+        this._scoreGlyphsText = score;
+        this._scoreGlyphs = this.layoutTracked(
+          score, FONT89_ADV_175, 1.75, -914, cx, true
+        );
+      }
       const magenta = window.tocolor(ctrans.apply([183, 0, 157, 1]));
-      this.placedGlyphs(ctx, window.font89, magenta, this.layoutTracked(
-        score, FONT89_ADV_175, big, -914, cx, true
-      ));
+      this.placedGlyphs(ctx, window.font89, magenta, this._scoreGlyphs);
     }
     place(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, time) {
       // Hot path: ~hundreds of place() calls per frame. Fast charCode prefix
@@ -634,7 +636,6 @@
       if (!this._bonusMat) this._bonusMat = [0.05, 0, 0, 0.05, 0, 0];
       if (!this._floeMat) this._floeMat = [0.05, 0, 0, 0.05, 0, 0];
       if (!this._markerMat) this._markerMat = [0.05, 0, 0, 0.05, 0, 0];
-      if (!this._tmpMatA) this._tmpMatA = [1, 0, 0, 1, 0, 0];
       const tileMat = this._tileMat;
       const bonusMat = this._bonusMat;
       tileMat[4] = g.bgX;

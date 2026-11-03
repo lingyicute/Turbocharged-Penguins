@@ -183,3 +183,31 @@ test("drawMorphPath handles Z closePath, BlendModes.normal binds _cut, and resto
   core.BlendModes.blendData(src, dst, out, 1);
   assert.ok(out[3] > 0);
 });
+
+test("cxform.applyToImage LUT matches exact rounded channel transform across 0..255", () => {
+  const {core} = loadCore({supportsReset: true});
+  let lastPut = null;
+  const proto = core.CanvasRenderingContext2D.prototype;
+  proto.drawImage = () => {};
+  proto.getImageData = () => {
+    const data = new Uint8ClampedArray(256 * 4);
+    for (let i = 0; i < 256; i++) {
+      data[i * 4] = i;
+      data[i * 4 + 1] = 255 - i;
+      data[i * 4 + 2] = (i * 7) & 255;
+      data[i * 4 + 3] = i;
+    }
+    return {data, width: 256, height: 1};
+  };
+  proto.putImageData = im => { lastPut = im.data; };
+  const cx = new core.cxform(15, -20, 5, -10, 180, 90, 256, 200);
+  cx.applyToImage({width: 256, height: 1, _pooled: true});
+  assert.ok(lastPut);
+  const clamp = v => v <= 0 ? 0 : v > 255 ? 255 : v;
+  for (let i = 0; i < 256; i++) {
+    assert.equal(lastPut[i * 4], clamp(Math.round(i * 180 / 255 + 15)));
+    assert.equal(lastPut[i * 4 + 1], clamp(Math.round((255 - i) * 90 / 255 - 20)));
+    assert.equal(lastPut[i * 4 + 2], clamp(Math.round(((i * 7) & 255) * 256 / 255 + 5)));
+    assert.equal(lastPut[i * 4 + 3], clamp(Math.round(i * 200 / 255 - 10)));
+  }
+});
