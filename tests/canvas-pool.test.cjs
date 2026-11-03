@@ -123,3 +123,23 @@ test("drawPath and drawMorphPath preserve positive stroke width under flip and r
   assert.equal(widths[2], 4 * 20 * 2, "flipped VERTICAL morph stroke stays positive");
   assert.equal(ctx.lineWidth, 4);
 });
+
+test("gradientGlow and gradientBevel use local canvas contexts and integer LUT indices", () => {
+  const {core} = loadCore({supportsReset: true});
+  const proto = core.CanvasRenderingContext2D.prototype;
+  proto.createLinearGradient = () => ({addColorStop() {}});
+  proto.drawImage = () => {};
+  proto.createImageData = (w, h) => ({data: new Uint8ClampedArray(w * h * 4), width: w, height: h});
+  proto.getImageData = (x, y, w, h) => {
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < data.length; i += 4) { data[i] = 100; data[i + 2] = 30; data[i + 3] = 200; }
+    return {data, width: w, height: h};
+  };
+  proto.putImageData = () => {};
+  const srcCanvas = core.createCanvas(4, 4);
+  const srcCtx = srcCanvas.getContext("2d");
+  const glow = core.Filters.gradientGlow(srcCanvas, srcCtx, 2, 2, 45, 1, [[255, 0, 0, 1], [0, 0, 255, 1]], [0, 1], core.Filters.FULL, 1, 1.5, false);
+  assert.equal(glow.width, 4);
+  const bevel = core.Filters.gradientBevel(srcCanvas, srcCtx, [[255, 0, 0, 1], [0, 255, 0, 1]], [0, 1], 2, 2, 1.5, core.Filters.FULL, 45, 1, true, 1);
+  assert.equal(bevel.width, 4);
+});
