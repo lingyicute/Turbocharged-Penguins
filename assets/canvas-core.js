@@ -876,8 +876,10 @@ function concatMatrix(m1, m2) {
 
     proto.setTransform = function (a, b, c, d, e, f) {
         if (this._enhanced) {
-            if (a && typeof a === 'object') {
-                this._matrix = [a.a, a.b, a.c, a.d, a.e, a.f];
+            if (arguments.length === 0) {
+                this._matrix = [1, 0, 0, 1, 0, 0];
+            } else if (a && typeof a === 'object') {
+                this._matrix = [a.a ?? 1, a.b ?? 0, a.c ?? 0, a.d ?? 1, a.e ?? 0, a.f ?? 0];
             } else {
                 this._matrix = [a, b, c, d, e, f];
             }
@@ -1678,7 +1680,8 @@ function drawPath(ctx, p, doStroke, scaleMode) {
     };
     proto.clip = function () {
         var b = this._pathBox;
-        this._clipBox = (b && b.n && this._matrix)
+        var usesCurrentPath = arguments.length === 0 || typeof arguments[0] === "string";
+        this._clipBox = (usesCurrentPath && b && b.n && this._matrix)
             ? {minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY, m: this._matrix}
             : null;
         return origClip.apply(this, arguments);
@@ -1722,7 +1725,7 @@ function drawPath(ctx, p, doStroke, scaleMode) {
         return origFillRect.call(this, x, y, w, h);
     };
     proto.createPattern = function (image, repetition) {
-        if (!image) return origPattern.call(this, image, repetition);
+        if (!image || image._pooled) return origPattern.call(this, image, repetition);
         var wm = this._patCache || (this._patCache = new WeakMap());
         var bag = wm.get(image);
         if (!bag) wm.set(image, bag = {});

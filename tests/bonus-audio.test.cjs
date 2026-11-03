@@ -553,3 +553,50 @@ test("delay frames stop parents across multi-step advance and end() clears unmat
   timeline.end();
   assert.equal(timeline.pending.length, 0, "unmatched pending cues are cleared after render pass");
 });
+
+test("panel frame sounds fire on stepped frames and pending goto skips frame-1 sound", async () => {
+  const {app, Physics} = await createApp();
+  const played = [];
+  app.audio.effect = id => played.push(id);
+  const window = {
+    FRAME_SOUNDS: {257: {45: [96], 56: [164]}, 376: {1: [3], 3: [374]}},
+    sprite257: function() { var frame_cnt = 306; },
+    sprite376: function() { var frame_cnt = 4; }
+  };
+  const context = require("node:vm").createContext({window});
+  loadSource(context, "timeline.js");
+  app.timeline = new window.ClipTimelines(app);
+  app.timeline.begin();
+  const panel = app.timeline.enter("sprite257");
+  app.timeline.leave();
+  app.timeline.end();
+
+  app.mode = "menuIn";
+  app.panelFrame = 44;
+  app.advanceFrame();
+  assert.equal(panel.frame, 45);
+  assert.deepEqual(played, [96], "menuIn panel advance triggers sprite257 frame 45 cue");
+
+  played.length = 0;
+  app.timeline.requestPlay("root/sprite376#0", 3, false);
+  app.timeline.begin();
+  const c376 = app.timeline.enter("sprite376");
+  app.timeline.leave();
+  app.timeline.end();
+  assert.equal(c376.frame, 3);
+  assert.deepEqual(played, [374], "pending goto on new clip does not fire frame 1 before jumping");
+
+  // Mid-flight bonus pickup uses app.now timestamp
+  app.mode = "playing";
+  app.now = 4321;
+  const g = app.game = Physics.createInitialGame(1);
+  const b = {x: 200, y: 130, type: 1, collected: 0};
+  g.bgX = 0;
+  g.bgY = 4 * 445;
+  g.tiles.set(4, {bonuses: [b]});
+  const center = Physics.bonusStageCenter(g, 4, b);
+  g.x = center.x;
+  g.y = center.y;
+  Physics.hitTests(g, app.audio, app.now);
+  assert.equal(b.collected, 4321, "flight pickup records caller timestamp");
+});

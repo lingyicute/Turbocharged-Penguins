@@ -211,3 +211,17 @@ test("cxform.applyToImage LUT matches exact rounded channel transform across 0..
     assert.equal(lastPut[i * 4 + 3], clamp(Math.round(i * 200 / 255 - 10)));
   }
 });
+
+test("setTransform() with no arguments resets _matrix and clip(Path2D) clears _clipBox", () => {
+  const {core} = loadCore({supportsReset: true});
+  const ctx = core.enhanceContext(new core.CanvasRenderingContext2D());
+  ctx.transform(2, 0, 0, 3, 10, 20);
+  ctx.setTransform();
+  assert.deepEqual(Array.from(ctx._matrix), [1, 0, 0, 1, 0, 0]);
+
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(10, 10);
+  ctx.clip({});
+  assert.equal(ctx._clipBox, null, "Path2D clip does not reuse _pathBox");
+});

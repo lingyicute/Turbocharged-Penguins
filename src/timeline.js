@@ -44,7 +44,6 @@
     565: {167: 6, 218: 50},
     578: {5: 50}
   });
-  const REPLACED_DELAYS = Object.freeze({312: [41], 320: [48], 379: [2]});
 
   // Bonus graphics must stay on their icon frame until bonus.play().
   const BONUS_HOLD = new Set([478, 488, 492, 496, 498, 501, 503, 506, 508]);
@@ -132,8 +131,7 @@
           seen: this.renderNumber, delay: 0, loopVar: 0, soundedFrame: 0
         };
         this.clips.set(path, clip);
-        this.onFrame(clip);
-        this.flushPending(clip);
+        if (!this.flushPending(clip)) this.onFrame(clip);
       }
       clip.seen = this.renderNumber;
       clip.parentFrame = parent.frame;
@@ -166,10 +164,8 @@
       // A goto that plays re-runs the frame, including its sound, even if
       // the playhead was already there. Internal loops must not pass retrigger
       // or a same-frame goto would recurse.
-      if (retrigger) {
-        clip.soundedFrame = 0;
-        if (DELAYS[clip.id]?.[clip.frame]) this.clips.delete(clip.path + '/sprite25#0');
-      }
+      if (retrigger) clip.soundedFrame = 0;
+      if (DELAYS[clip.id]?.[clip.frame]) this.clips.delete(clip.path + '/sprite25#0');
       this.onFrame(clip);
     }
 
@@ -184,15 +180,20 @@
     }
 
     flushPending(clip) {
-      if (this.pending.length === 0) return;
+      if (this.pending.length === 0) return false;
       const left = [];
+      let jumped = false;
       for (let i = 0; i < this.pending.length; i++) {
         const item = this.pending[i];
         if (item.path !== clip.path) { left.push(item); continue; }
         if (item.frame == null) this.play(clip);
-        else this.goto(clip, item.frame, item.playing, !!item.retrigger);
+        else {
+          jumped = true;
+          this.goto(clip, item.frame, item.playing, !!item.retrigger);
+        }
       }
       this.pending = left;
+      return jumped;
     }
 
     sibling(clip, id, ordinal = 0) {

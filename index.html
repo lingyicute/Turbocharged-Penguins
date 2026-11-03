@@ -932,8 +932,10 @@ function concatMatrix(m1, m2) {
 
     proto.setTransform = function (a, b, c, d, e, f) {
         if (this._enhanced) {
-            if (a && typeof a === 'object') {
-                this._matrix = [a.a, a.b, a.c, a.d, a.e, a.f];
+            if (arguments.length === 0) {
+                this._matrix = [1, 0, 0, 1, 0, 0];
+            } else if (a && typeof a === 'object') {
+                this._matrix = [a.a ?? 1, a.b ?? 0, a.c ?? 0, a.d ?? 1, a.e ?? 0, a.f ?? 0];
             } else {
                 this._matrix = [a, b, c, d, e, f];
             }
@@ -1734,7 +1736,8 @@ function drawPath(ctx, p, doStroke, scaleMode) {
     };
     proto.clip = function () {
         var b = this._pathBox;
-        this._clipBox = (b && b.n && this._matrix)
+        var usesCurrentPath = arguments.length === 0 || typeof arguments[0] === "string";
+        this._clipBox = (usesCurrentPath && b && b.n && this._matrix)
             ? {minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY, m: this._matrix}
             : null;
         return origClip.apply(this, arguments);
@@ -1778,7 +1781,7 @@ function drawPath(ctx, p, doStroke, scaleMode) {
         return origFillRect.call(this, x, y, w, h);
     };
     proto.createPattern = function (image, repetition) {
-        if (!image) return origPattern.call(this, image, repetition);
+        if (!image || image._pooled) return origPattern.call(this, image, repetition);
         var wm = this._patCache || (this._patCache = new WeakMap());
         var bag = wm.get(image);
         if (!bag) wm.set(image, bag = {});
@@ -33737,7 +33740,6 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
     565: {167: 6, 218: 50},
     578: {5: 50}
   });
-  const REPLACED_DELAYS = Object.freeze({312: [41], 320: [48], 379: [2]});
 
   // Bonus graphics must stay on their icon frame until bonus.play().
   const BONUS_HOLD = new Set([478, 488, 492, 496, 498, 501, 503, 506, 508]);
@@ -33825,8 +33827,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
           seen: this.renderNumber, delay: 0, loopVar: 0, soundedFrame: 0
         };
         this.clips.set(path, clip);
-        this.onFrame(clip);
-        this.flushPending(clip);
+        if (!this.flushPending(clip)) this.onFrame(clip);
       }
       clip.seen = this.renderNumber;
       clip.parentFrame = parent.frame;
@@ -33859,10 +33860,8 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       // A goto that plays re-runs the frame, including its sound, even if
       // the playhead was already there. Internal loops must not pass retrigger
       // or a same-frame goto would recurse.
-      if (retrigger) {
-        clip.soundedFrame = 0;
-        if (DELAYS[clip.id]?.[clip.frame]) this.clips.delete(clip.path + '/sprite25#0');
-      }
+      if (retrigger) clip.soundedFrame = 0;
+      if (DELAYS[clip.id]?.[clip.frame]) this.clips.delete(clip.path + '/sprite25#0');
       this.onFrame(clip);
     }
 
@@ -33877,15 +33876,20 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
     }
 
     flushPending(clip) {
-      if (this.pending.length === 0) return;
+      if (this.pending.length === 0) return false;
       const left = [];
+      let jumped = false;
       for (let i = 0; i < this.pending.length; i++) {
         const item = this.pending[i];
         if (item.path !== clip.path) { left.push(item); continue; }
         if (item.frame == null) this.play(clip);
-        else this.goto(clip, item.frame, item.playing, !!item.retrigger);
+        else {
+          jumped = true;
+          this.goto(clip, item.frame, item.playing, !!item.retrigger);
+        }
       }
       this.pending = left;
+      return jumped;
     }
 
     sibling(clip, id, ordinal = 0) {
@@ -34669,7 +34673,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       };
     }
 
-    static hitTests(g, audio) {
+    static hitTests(g, audio, now = 0) {
       const inCliff = Math.floor((g.bgY - g.y) / CONFIG.cliffTileHeight) <= CONFIG.maxCliffTiles;
       // A wall hit plays sound 3 now and sound 4 seven frames later.
       if (inCliff && g.x < 54 && g.vx < 0) {
@@ -34688,7 +34692,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
           const by = nTileY + b.y + BONUS_CENTER_OFFSET;
           const dx=(g.x-bx)/36, dy=(g.y-by)/48;
           if (g.y>-10 && dx*dx+dy*dy<1) {
-            Physics.collectBonus(b, g, audio);
+            Physics.collectBonus(b, g, audio, now);
           }
         }
       }
@@ -35813,12 +35817,14 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
         case 'menuIn':
           this.setFrame(53);
           this.panelFrame = Math.min(65, this.panelFrame + 1);
+          this.syncPanelSound();
           if (this.panelFrame === 65) this.mode = 'menu';
           break;
         case 'menu': this.setFrame(53); break;
         case 'menuOut':
           this.setFrame(53);
           this.panelFrame++;
+          this.syncPanelSound();
           if (this.panelFrame >= 71) {
             this.panelFrame = 1;
             this.chooseTime = 0;
@@ -35888,7 +35894,7 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       const g = this.game;
       if (!g) return;
       window.Physics.applyGravity(g);
-      window.Physics.hitTests(g, this.audio);
+      window.Physics.hitTests(g, this.audio, this.now);
       if (this.mode !== 'playing') { this.flushCues(); return; }
       window.Physics.movePenguin(g);
       window.Physics.ensureTiles(g);
@@ -35927,9 +35933,19 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       // Clear the sounded marker so a second visit to that panel frame still plays.
       const panel = this.timeline.byId.get(257) || this.timeline.lookup('root/sprite257#0');
       if (panel) panel.soundedFrame = 0;
+      this.pressed = null;
       this.mode='ending';
       this.setFrame(116);
       this.transitionTick=0;
+      this.syncPanelSound();
+    }
+
+    syncPanelSound() {
+      const panel = this.timeline.byId?.get(257) || this.timeline.lookup?.('root/sprite257#0');
+      if (panel && this.timeline.playFrameSounds) {
+        panel.frame = Math.max(1, this.panelFrame);
+        this.timeline.playFrameSounds(panel);
+      }
     }
 
     advanceEndingPanel() {
@@ -35940,6 +35956,7 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
           this.panelFrame = this.panelStop;
           this.panelPhase = 'hold';
         }
+        this.syncPanelSound();
         return;
       }
       if (this.panelPhase === 'out') {
@@ -35948,17 +35965,25 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
           this.panelFrame = this.panelGoto;
           this.panelPhase = 'dest';
         }
+        this.syncPanelSound();
         return;
       }
-      if (this.panelPhase === 'dest' && this.panelFrame < this.resultTarget) this.panelFrame++;
+      if (this.panelPhase === 'dest' && this.panelFrame < this.resultTarget) {
+        this.panelFrame++;
+        this.syncPanelSound();
+      }
     }
 
     continuePanel() {
       if (this.mode !== 'ending' || this.panelPhase !== 'hold') return;
+      this.pressed = null;
       this.panelPhase = 'out';
       this.panelFrame++;
-      const panel = this.timeline.byId.get(257) || this.timeline.lookup('root/sprite257#0');
-      if (panel) panel.soundedFrame = this.panelFrame;
+      const panel = this.timeline.byId?.get(257) || this.timeline.lookup?.('root/sprite257#0');
+      if (panel) {
+        panel.frame = this.panelFrame;
+        panel.soundedFrame = this.panelFrame;
+      }
       this.audio.effect(96, 0.7);
     }
 
@@ -35982,10 +36007,13 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
     }
     chargePenguin(n) {
       if (this.mode !== 'select') return;
-      if (this.charging && this.charging !== n) this.cancelCharge();
+      n = clamp(n, 1, 3);
+      if (this.charging === n) return;
+      if (this.charging) this.cancelCharge();
       this.charging = n;
       const clip = this.penguinClip(n);
       if (clip) this.timeline.goto(clip, 19, true);
+      else if (this.timeline.requestPlay) this.timeline.requestPlay(`root/sprite380#0/sprite379#0/sprite378#p${n}`, 19, true);
       const blurs = this.timeline.lookup ? this.timeline.lookup('root/sprite403#0') : null;
       if (blurs) this.timeline.goto(blurs, n, false);
       else if (this.timeline.requestPlay) this.timeline.requestPlay('root/sprite403#0', n, false);
@@ -36039,11 +36067,13 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
     startMenu() {
       if (this.mode!=='menu') return;
       this.audio.unlock();
+      this.pressed = null;
       this.mode='menuOut';
       this.panelFrame=65;
     }
     restart() {
       if (this.mode!=='result' || this.panelFrame===140) return;
+      this.pressed = null;
       this.audio.effect(96,0.65);
       this.mode='restarting';
       this.rootTime=0;
@@ -36052,6 +36082,7 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
     }
     submitScore() {
       if (this.mode!=='result' || (this.panelFrame!==72 && this.panelFrame!==103 && this.panelFrame!==179)) return;
+      this.pressed = null;
       this.audio.effect(96,0.55);
       this.panelFrame=140;
       this.transitionTick=0;
@@ -36124,7 +36155,7 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
     }
     bindInputs() {
       this.canvas.addEventListener('pointermove', e => {
-        const p=this.stagePoint(e);this.pointer=p;
+        const p=this.stagePoint(e);this.pointer=p;window.Physics._pointerX=p.x;
         const area=this.hitArea(p.x,p.y);
         this.canvas.style.cursor = !this.audio.unlocked || area ? 'pointer' : 'default';
         if (this.mode==='select') this.hoverPenguin(/^penguin[123]$/.test(area||'') ? +area.slice(-1) : 0);
@@ -36136,12 +36167,13 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.preventDefault();
         this.canvas.focus({preventScroll:true});
+        const p=this.stagePoint(e);this.pointer=p;window.Physics._pointerX=p.x;
         if (!this.audio.unlocked) {
           this.audio.unlock();
           this.pressed = null;
+          this.canvas.style.cursor = this.hitArea(p.x,p.y) ? 'pointer' : 'default';
           return;
         }
-        const p=this.stagePoint(e);this.pointer=p;
         const area=this.hitArea(p.x,p.y);
         if (area==='penguin' || (area && typeof area==='object')) {
           // The cliff scrolls hundreds of px/s, so a pickup is gone from under
@@ -36157,7 +36189,7 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       this.canvas.addEventListener('pointerup', e => {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.preventDefault();
-        const p=this.stagePoint(e);this.pointer=p;
+        const p=this.stagePoint(e);this.pointer=p;window.Physics._pointerX=p.x;
         const hit=this.hitArea(p.x,p.y);
         const same=hit && hit===this.pressed;
         const wasCharge=this.charging;
@@ -36166,6 +36198,7 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
           if (same) this.choosePenguin(wasCharge);
           else this.cancelCharge();
         } else if (same) this.activate(hit,p.x,p.y);
+        this.canvas.style.cursor = !this.audio.unlocked || this.hitArea(p.x,p.y) ? 'pointer' : 'default';
       });
       this.canvas.addEventListener('pointercancel', () => {
         this.pressed=null;
