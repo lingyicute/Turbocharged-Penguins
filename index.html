@@ -97,6 +97,9 @@ var createCanvas = function (width, height) {
             pooled = document.createElement("canvas");
             pooled.width = width;
             pooled.height = height;
+            // Contents are recycled on the next frame, so nothing may cache
+            // results derived from this canvas (see cxform.applyToImage).
+            pooled._pooled = true;
             _canvasPool[_canvasPoolUsed] = pooled;
         } else {
             var g = pooled.getContext("2d");
@@ -1000,10 +1003,19 @@ cxform.prototype.applyToImage = function (fimg) {
     }
     var key = this.r_add + "," + this.g_add + "," + this.b_add + "," + this.a_add + "," +
               this.r_mult + "," + this.g_mult + "," + this.b_mult + "," + this.a_mult;
-    var cache = fimg._cxCache;
+    // A pooled canvas is cleared and reused later, so it is neither a valid
+    // cache holder (its _cxCache would outlive its pixels) nor a valid cache
+    // value. Tint results are cached on source images only, and always get
+    // their own canvas.
+    var cacheable = !fimg._pooled;
+    var cache = cacheable ? fimg._cxCache : null;
     if (cache && cache[key]) return cache[key];
-    if (!cache || Object.keys(cache).length > 48) cache = fimg._cxCache = {};
-    var icanvas = createCanvas(fimg.width, fimg.height);
+    if (cacheable && (!cache || Object.keys(cache).length > 48)) cache = fimg._cxCache = {};
+    var icanvas = cacheable ? document.createElement("canvas") : createCanvas(fimg.width, fimg.height);
+    if (cacheable) {
+        icanvas.width = fimg.width;
+        icanvas.height = fimg.height;
+    }
     var ictx = icanvas.getContext("2d");
     ictx.drawImage(fimg, 0, 0);
     var imdata = ictx.getImageData(0, 0, icanvas.width, icanvas.height);
@@ -1022,7 +1034,7 @@ cxform.prototype.applyToImage = function (fimg) {
         idata[i + 3] = a < 0 ? 0 : a > 255 ? 255 : a;
     }
     ictx.putImageData(imdata, 0, 0);
-    cache[key] = icanvas;
+    if (cacheable) cache[key] = icanvas;
     return icanvas;
 };
 

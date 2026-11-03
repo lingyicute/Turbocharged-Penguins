@@ -73,3 +73,22 @@ test('transformRect bounds stay correct for rectangles left of or above the orig
   const rect = core.transformRect([1, 0, 0, 1, 0, 0], {xMin: -30, xMax: -10, yMin: -8, yMax: -2});
   assert.deepEqual({...rect}, {xMin: -30, xMax: -10, yMin: -8, yMax: -2});
 });
+
+test('tint results are cached on images, never on or in pooled canvases', () => {
+  const {core} = loadCore({supportsReset: true});
+  const proto = core.CanvasRenderingContext2D.prototype;
+  proto.drawImage = () => {};
+  proto.getImageData = (x, y, w, h) => ({data: new Uint8ClampedArray(w * h * 4)});
+  proto.putImageData = () => {};
+  const tint = new core.cxform(0, 0, 0, 0, 128, 128, 128, 255);
+  const image = {width: 4, height: 4};
+  const a = tint.applyToImage(image);
+  assert.equal(tint.applyToImage(image), a, 'image results stay cached');
+
+  core.beginCanvasPool();
+  const stage = core.createCanvas(620, 360);
+  assert.equal(stage._pooled, true);
+  const first = tint.applyToImage(stage);
+  assert.equal(stage._cxCache, undefined, 'pooled canvases carry no cache into the next frame');
+  assert.notEqual(tint.applyToImage(stage), first);
+});
