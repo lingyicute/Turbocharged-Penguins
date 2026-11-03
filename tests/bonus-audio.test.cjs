@@ -650,3 +650,39 @@ test("pending frame-less requestPlay survives frame-1 stops and syncs stack pare
   timeline.end();
   assert.equal(child.parentFrame, 5, "child sees updated parentFrame after goto()");
 });
+
+test("hiding while fallback music.play() is pending pauses it and resumes later", async () => {
+  const pending = deferred();
+  const log = [];
+  class FakeAudio {
+    constructor() { this.paused = true; this.volume = 0; }
+    play() { log.push("play"); return pending.promise.then(() => { this.paused = false; }); }
+    pause() { log.push("pause"); this.paused = true; }
+  }
+  const window = {};
+  const context = vm.createContext({window, Audio: FakeAudio});
+  loadSource(context, "audio.js");
+  const audio = new window.GameAudio();
+  audio.unlocked = true;
+  audio.ensureMusic();
+  assert.equal(audio.music.paused, true, "play() has not settled yet");
+  log.length = 0;
+  audio.setHidden(true);
+  assert.deepEqual(log, ["pause"]);
+  audio.setHidden(false);
+  assert.deepEqual(log, ["pause", "play"]);
+});
+
+test("web audio bed does not make hiding touch the idle media element", () => {
+  const {GameAudio} = createAudio(() => Promise.reject(new Error("unused")), () => Promise.resolve());
+  const audio = new GameAudio();
+  audio.unlocked = true;
+  audio.musicStarted = true;
+  audio.audioContext = {state: "running", suspend: () => Promise.resolve(), resume: () => Promise.resolve()};
+  let plays = 0;
+  audio.music.paused = true;
+  audio.music.play = () => { plays++; return Promise.resolve(); };
+  audio.setHidden(true);
+  audio.setHidden(false);
+  assert.equal(plays, 0);
+});
