@@ -151,7 +151,7 @@
       this.stingLoading = true;
       fetch(urlFor(1))
         .then(r => r.arrayBuffer())
-        .then(buf => this.audioContext.decodeAudioData(buf.slice(0)))
+        .then(buf => this.audioContext.decodeAudioData(buf))
         .then(decoded => {
           const sting = this.seamlessLoops(decoded, 2);
           // One trimmed copy, looped by the audio clock. Not the doubled sting.
@@ -413,7 +413,8 @@
       if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
       if (this.musicWasPlaying) {
         this.musicWasPlaying = false;
-        try { Promise.resolve(this.music.play()).catch(() => {}); } catch (_) {}
+        try { Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; }); }
+        catch (_) { this.musicStarted = false; }
       }
     }
 

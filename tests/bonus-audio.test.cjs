@@ -527,3 +527,29 @@ test("bonus timelines stay isolated per tile pickup and start burst when collect
   const clip1After = app.timeline.lookup(b1.visualPath);
   assert.equal(clip1After.frame, 1, "remaining uncollected bonus does not inherit faded sibling frame 13");
 });
+
+test("delay frames stop parents across multi-step advance and end() clears unmatched pending cues", () => {
+  const window = {FRAME_SOUNDS: {}, sprite312: function() { var frame_cnt = 66; }};
+  const context = vm.createContext({window});
+  loadSource(context, "timeline.js");
+  const timeline = new window.ClipTimelines({rootFrame: 50, audio: {effect() {}}});
+  timeline.begin();
+  const clip = timeline.enter("sprite312");
+  timeline.leave();
+  timeline.end();
+
+  clip.frame = 31;
+  clip.playing = true;
+  // Two consecutive advance() calls before render() must not skip frame 32 (a DELAYS frame)
+  timeline.advance();
+  timeline.advance();
+  assert.equal(clip.frame, 32, "delay frame 32 stops clip immediately without waiting for render()");
+  assert.equal(clip.playing, false);
+
+  // Unmatched pending cues for absent children are cleared at timeline.end()
+  timeline.requestPlay("root/sprite568#0/sprite565#0/sprite294#0", 2, true);
+  assert.equal(timeline.pending.length, 1);
+  timeline.begin();
+  timeline.end();
+  assert.equal(timeline.pending.length, 0, "unmatched pending cues are cleared after render pass");
+});

@@ -100,6 +100,7 @@
           }
         }
       }
+      this.pending.length = 0;
       this.stackIndex = -1;
     }
 
@@ -120,8 +121,7 @@
       const path = parent.path + '/' + name + '#' + identity;
       const length = id ? this.length(id) : 1;
       let clip = this.clips.get(path);
-      if (clip && id === 25 && clip.parentFrame !== parent.frame &&
-          REPLACED_DELAYS[parent.id]?.includes(parent.frame)) {
+      if (clip && id === 25 && clip.parentFrame !== parent.frame) {
         this.clips.delete(path);
         clip = null;
       }
@@ -166,7 +166,10 @@
       // A goto that plays re-runs the frame, including its sound, even if
       // the playhead was already there. Internal loops must not pass retrigger
       // or a same-frame goto would recurse.
-      if (retrigger) clip.soundedFrame = 0;
+      if (retrigger) {
+        clip.soundedFrame = 0;
+        if (DELAYS[clip.id]?.[clip.frame]) this.clips.delete(clip.path + '/sprite25#0');
+      }
       this.onFrame(clip);
     }
 
@@ -227,7 +230,7 @@
         return;
       }
       if (BONUS_HOLD.has(id) && f === 1) clip.playing = false;
-      if (STOPS[id]?.includes(f)) clip.playing = false;
+      if (STOPS[id]?.includes(f) || DELAYS[id]?.[f]) clip.playing = false;
       if (BONUS_HOLD.has(id) && f === clip.length) clip.playing = false;
 
       switch (id) {
