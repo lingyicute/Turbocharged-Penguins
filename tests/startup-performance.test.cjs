@@ -26,17 +26,18 @@ test('backing store follows display size and uncapped DPR, invalidating only on 
  window.devicePixelRatio=1;r.canvas.getBoundingClientRect=()=>({width:310,height:180});r.handleResize();
  assert.equal(r.canvas.width,310);assert.equal(r.canvas.height,180);
 });
-test('static raster keys ignore placement frame/ratio but morph keys retain their ratio',()=>{
+test('static raster keys ignore placement frame/ratio and morph shapes are never blitted',()=>{
  const {r,window}=renderer();const keys=[];
  r.strokes=()=>false;r.imagesReady=()=>true;r.getDeviceScale=()=>1;r.cxKey=()=>0;
  r.rasters={get:key=>{keys.push(key);return {c:{},minX:0,minY:0,w:1,h:1};}};
  const ctx={globalCompositeOperation:'source-over',save(){},restore(){},transform(){},drawImage(){}};
- for(const name of ['shape359','image33','morphshape1']) {
+ for(const name of ['shape359','image33']) {
   window[name]=()=>{};
   r.tryBlit(name,ctx,[1,0,0,1,0,0],{},1,1,100);
   r.tryBlit(name,ctx,[1,0,0,1,0,0],{},1,2,200);
  }
- assert.equal(keys[0],keys[1]);assert.equal(keys[2],keys[3]);assert.notEqual(keys[4],keys[5]);
+ assert.equal(keys[0],keys[1]);assert.equal(keys[2],keys[3]);
+ window.morphshape1=()=>{};assert.equal(r.tryBlit('morphshape1',ctx,[1,0,0,1,0,0],{},1,1,100),false);assert.equal(keys.length,4);
  ctx._floeMaskPathOnly=true;assert.equal(r.tryBlit('shape359',ctx,[],{},1,0,0),false);
 });
 const art=source('assets/f-art.js');
