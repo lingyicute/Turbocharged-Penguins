@@ -38,6 +38,7 @@
       this.buffers = new Map();
       this.effectLoads = new Map();
       this.musicStarted = false;
+      this.fallbackMusic = false;
       this.sting = null;
       this.stingGain = null;
       this.stingBuffer = null;
@@ -115,10 +116,13 @@
         this.musicWasPlaying = true;
         return;
       }
+      // play() settles asynchronously; music.paused stays true until then.
+      this.fallbackMusic = true;
       try {
-        Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; });
+        Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; this.fallbackMusic = false; });
       } catch (_) {
         this.musicStarted = false;
+        this.fallbackMusic = false;
       }
     }
 
@@ -394,7 +398,7 @@
           this.hiddenAt = typeof performance !== 'undefined' ? performance.now() : 0;
         }
         if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
-        if (!this.music.paused) {
+        if (!this.music.paused || this.fallbackMusic) {
           this.musicWasPlaying = true;
           this.music.pause();
         }
@@ -415,8 +419,9 @@
       if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
       if (this.musicWasPlaying) {
         this.musicWasPlaying = false;
-        try { Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; }); }
-        catch (_) { this.musicStarted = false; }
+        this.fallbackMusic = true;
+        try { Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; this.fallbackMusic = false; }); }
+        catch (_) { this.musicStarted = false; this.fallbackMusic = false; }
       }
     }
 
