@@ -66,8 +66,10 @@
       };
 
       // Handle high DPI
-      this.resizeObserver = new ResizeObserver(() => this.handleResize());
-      this.resizeObserver.observe(this.canvas);
+      if (typeof ResizeObserver !== 'undefined') {
+        this.resizeObserver = new ResizeObserver(() => this.handleResize());
+        this.resizeObserver.observe(this.canvas);
+      }
       window.addEventListener('resize', () => this.handleResize());
       this.watchDpr();
       this.handleResize();
@@ -455,17 +457,23 @@
       if (obj === 'sprite478') {
         const clip = a.timeline.enter(obj);
         if (this.currentBonus) this.currentBonus.visualPath = clip.path;
-        const aa = matrix[0], bb = matrix[1], cc = matrix[2], dd = matrix[3], tx = matrix[4], ty = matrix[5];
-        // Reuse a scratch matrix instead of allocating a fresh array every
-        // time the x1 bubble is rendered (once per placed bonus per frame).
-        const mat = this._tmpMatA || (this._tmpMatA = [1,0,0,1,0,0]);
-        mat[0]=aa; mat[1]=bb; mat[2]=cc; mat[3]=dd;
-        mat[4] = tx + aa * 662; mat[5] = ty + bb * 662;
-        this.skipBubbleLabel = true;
         try {
-          return this.basePlace('sprite488', canvas, ctx, mat, ctrans, blend, clip.frame - 1, ratio, 0);
+          if (clip.frame === 1) {
+            const aa = matrix[0], bb = matrix[1], cc = matrix[2], dd = matrix[3], tx = matrix[4], ty = matrix[5];
+            // Reuse a scratch matrix instead of allocating a fresh array every
+            // time the x1 bubble is rendered (once per placed bonus per frame).
+            const mat = this._tmpMatA || (this._tmpMatA = [1,0,0,1,0,0]);
+            mat[0]=aa; mat[1]=bb; mat[2]=cc; mat[3]=dd;
+            mat[4] = tx + aa * 662; mat[5] = ty + bb * 662;
+            this.skipBubbleLabel = true;
+            try {
+              return this.basePlace('sprite488', canvas, ctx, mat, ctrans, blend, 0, ratio, 0);
+            } finally {
+              this.skipBubbleLabel = false;
+            }
+          }
+          return this.basePlace('sprite478', canvas, ctx, matrix, ctrans, blend, clip.frame - 1, ratio, 0);
         } finally {
-          this.skipBubbleLabel = false;
           a.timeline.playFrameSounds(clip);
           a.timeline.leave();
         }
@@ -589,11 +597,12 @@
           sm[4]=g.explX; sm[5]=g.explY;
           return draw(obj, sm);
         }
-        if (obj === 'sprite418' && a.launchDx) {
-          sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
-          sm[4]=matrix[4] + a.launchDx; sm[5]=matrix[5];
-          return draw(obj, sm);
-        }
+      }
+      if (obj === 'sprite418' && a.launchDx) {
+        const sm = this._tmpMatA || (this._tmpMatA = [1,0,0,1,0,0]);
+        sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
+        sm[4]=matrix[4] + a.launchDx; sm[5]=matrix[5];
+        return draw(obj, sm);
       }
       return draw(obj, matrix);
     }

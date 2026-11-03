@@ -436,3 +436,41 @@ test("timeline.end cleans up unseen clips from byId and penguins maps", () => {
   assert.equal(timeline.byId.has(378), false);
   assert.equal(timeline.penguins.size, 0);
 });
+
+test("sprite478 shifts only the frame-1 bubble icon and sprite418 applies launchDx during launching", () => {
+  const calls = [];
+  const canvas = {width: 620, height: 360, getBoundingClientRect: () => ({width: 620, height: 360}), getContext: () => ({})};
+  const window = {
+    place(name, c, ctx, mat, ct, bl, fr) { calls.push({name, tx: mat[4], ty: mat[5], fr}); },
+    addEventListener() {}
+  };
+  const context = vm.createContext({
+    window,
+    document: {getElementById: () => canvas}
+  });
+  loadSource(context, "timeline.js");
+  loadSource(context, "renderer.js");
+  const app = {rootFrame: 58, mode: "launching", game: null, launchDx: 120, audio: {muted: false}};
+  app.timeline = new window.ClipTimelines(app);
+  const renderer = new window.OriginalArtRenderer(app);
+
+  app.timeline.begin();
+  window.place("sprite418", canvas, {}, [0.05, 0, 0, 0.05, 221.35, 262.95], {}, 1, 0, 0, 0);
+  window.place("sprite478", canvas, {}, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0, 0);
+  app.timeline.end();
+
+  assert.equal(calls[0].name, "sprite418");
+  assert.equal(calls[0].tx, 341.35, "launch effect is shifted by launchDx on rootFrame 58");
+  assert.equal(calls[1].name, "sprite488");
+  assert.equal(calls[1].tx, 662, "frame-1 bubble icon is shifted by +662 into bonus center");
+
+  calls.length = 0;
+  const clip478 = app.timeline.lookup("root/sprite478#0");
+  clip478.frame = 2;
+  app.timeline.begin();
+  window.place("sprite478", canvas, {}, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0, 0);
+  app.timeline.end();
+  assert.equal(calls[0].name, "sprite478");
+  assert.equal(calls[0].tx, 0, "burst frames use unshifted sprite478 coordinates");
+  assert.equal(calls[0].fr, 1);
+});
