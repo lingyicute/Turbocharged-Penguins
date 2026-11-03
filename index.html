@@ -33743,15 +33743,15 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
 
     parent() { return this.stack[this.stackIndex]; }
 
-    enter(name) {
+    enter(name, customId) {
       const parent = this.parent();
       const ordinal = parent.counts[name] || 0;
       parent.counts[name] = ordinal + 1;
       const id = name.startsWith('sprite') ? Number(name.slice(6)) : 0;
-      let identity = ordinal;
-      if (parent.id === 379 && id === 372) {
+      let identity = customId !== undefined ? customId : ordinal;
+      if (customId === undefined && parent.id === 379 && id === 372) {
         identity = SHOTS[parent.frame]?.[ordinal] || ordinal;
-      } else if (parent.id === 379 && id === 378) {
+      } else if (customId === undefined && parent.id === 379 && id === 378) {
         const standing = parent.frame === 4 ? STANDING_4 : STANDING_DEFAULT;
         identity = standing[ordinal] || ordinal;
       }
@@ -35239,7 +35239,12 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       // The x1 pickup draws the same purple bubble as x2, with a bolt for the label.
       if (obj === 'sprite478') {
         const clip = a.timeline.enter(obj);
-        if (this.currentBonus) this.currentBonus.visualPath = clip.path;
+        if (this.currentBonus) {
+          this.currentBonus.visualPath = clip.path;
+          if (this.currentBonus.collected && clip.frame === 1 && !clip.playing) {
+            a.timeline.play(clip);
+          }
+        }
         try {
           if (clip.frame === 1) {
             const aa = matrix[0], bb = matrix[1], cc = matrix[2], dd = matrix[3], tx = matrix[4], ty = matrix[5];
@@ -35282,6 +35287,9 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
           if (name === 'sprite478' || name === 'sprite492' || name === 'sprite498' ||
               name === 'sprite503' || name === 'sprite508') {
             this.currentBonus.visualPath = clip.path;
+            if (this.currentBonus.collected && clip.frame === 1 && !clip.playing) {
+              a.timeline.play(clip);
+            }
           }
         }
         if (fr !== undefined) {
@@ -35428,7 +35436,8 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         }
         const tile = g.tiles.get(n);
         if (!tile) continue;
-        for (const b of tile.bonuses) {
+        for (let bi = 0; bi < tile.bonuses.length; bi++) {
+          const b = tile.bonuses[bi];
           if (b.collected && this.app.now - b.collected > 560) continue;
           ctx.save();
           if (b.collected) ctx.globalAlpha *= clamp(1-(this.app.now-b.collected)/560,0,1);
@@ -35436,9 +35445,11 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
           this.drawingTile = true;
           bonusMat[4] = g.bgX + b.x;
           bonusMat[5] = g.bgY - n * 445 + b.y;
+          this.app.timeline.enter('sprite509', `t${n}_${bi}`);
           try {
             this.basePlace('sprite509', canvas, ctx, bonusMat, ctrans, blend, b.type, 0, 0);
           } finally {
+            this.app.timeline.leave();
             this.drawingTile = false;
             this.currentBonus = null;
           }

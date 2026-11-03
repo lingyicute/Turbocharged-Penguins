@@ -105,15 +105,15 @@
 
     parent() { return this.stack[this.stackIndex]; }
 
-    enter(name) {
+    enter(name, customId) {
       const parent = this.parent();
       const ordinal = parent.counts[name] || 0;
       parent.counts[name] = ordinal + 1;
       const id = name.startsWith('sprite') ? Number(name.slice(6)) : 0;
-      let identity = ordinal;
-      if (parent.id === 379 && id === 372) {
+      let identity = customId !== undefined ? customId : ordinal;
+      if (customId === undefined && parent.id === 379 && id === 372) {
         identity = SHOTS[parent.frame]?.[ordinal] || ordinal;
-      } else if (parent.id === 379 && id === 378) {
+      } else if (customId === undefined && parent.id === 379 && id === 378) {
         const standing = parent.frame === 4 ? STANDING_4 : STANDING_DEFAULT;
         identity = standing[ordinal] || ordinal;
       }
