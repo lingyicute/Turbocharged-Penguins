@@ -161,6 +161,9 @@
       if (!clip) return;
       clip.frame = Math.max(1, Math.min(clip.length, frame));
       clip.playing = playing;
+      if (this.stackIndex >= 0 && this.stack[this.stackIndex]?.path === clip.path) {
+        this.stack[this.stackIndex].frame = clip.frame;
+      }
       // A goto that plays re-runs the frame, including its sound, even if
       // the playhead was already there. Internal loops must not pass retrigger
       // or a same-frame goto would recurse.
@@ -175,25 +178,33 @@
         this.pending.push({path, frame, playing, retrigger: frame != null});
         return;
       }
-      if (frame == null) this.play(clip);
-      else this.goto(clip, frame, playing, true);
+      if (frame == null) {
+        if (playing === false) this.stop(clip);
+        else this.play(clip);
+      } else this.goto(clip, frame, playing, true);
     }
 
     flushPending(clip) {
       if (this.pending.length === 0) return false;
       const left = [];
-      let jumped = false;
+      let handled = false;
       for (let i = 0; i < this.pending.length; i++) {
         const item = this.pending[i];
         if (item.path !== clip.path) { left.push(item); continue; }
-        if (item.frame == null) this.play(clip);
-        else {
-          jumped = true;
+        if (item.frame == null) {
+          if (!handled) {
+            handled = true;
+            this.onFrame(clip);
+          }
+          if (item.playing === false) this.stop(clip);
+          else this.play(clip);
+        } else {
+          handled = true;
           this.goto(clip, item.frame, item.playing, !!item.retrigger);
         }
       }
       this.pending = left;
-      return jumped;
+      return handled;
     }
 
     sibling(clip, id, ordinal = 0) {
@@ -310,7 +321,9 @@
 
     turboButton(clip, f) {
       const g = this.app.game;
-      if (f === 3) {
+      if (f === 2) {
+        if (g && g.turbos >= 1) this.requestPlay(clip.path + '/sprite550#0', null, true);
+      } else if (f === 3) {
         if (!g || g.turbos < 1) this.goto(clip, 1, false);
         else if (g.firstTurbo) this.goto(this.child(clip, 544), 2, true);
       } else if (f === 15) {

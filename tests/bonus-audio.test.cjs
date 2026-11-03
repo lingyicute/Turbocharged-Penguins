@@ -600,3 +600,53 @@ test("panel frame sounds fire on stepped frames and pending goto skips frame-1 s
   Physics.hitTests(g, app.audio, app.now);
   assert.equal(b.collected, 4321, "flight pickup records caller timestamp");
 });
+
+test("pending frame-less requestPlay survives frame-1 stops and syncs stack parentFrame", () => {
+  const window = {
+    FRAME_SOUNDS: {},
+    sprite418: function() { var frame_cnt = 2; },
+    sprite550: function() { var frame_cnt = 20; },
+    sprite553: function() { var frame_cnt = 26; },
+    sprite379: function() { var frame_cnt = 38; },
+    sprite378: function() { var frame_cnt = 26; }
+  };
+  const context = vm.createContext({window});
+  loadSource(context, "timeline.js");
+  const app = {rootFrame: 55, mode: "playing", game: {turbos: 1, firstTurbo: true}, audio: {effect() {}}};
+  const timeline = new window.ClipTimelines(app);
+
+  // Queuing requestPlay with frame = null on a frame-1 stop clip (sprite418) keeps playing = true
+  timeline.requestPlay("root/sprite418#0", null, true);
+  timeline.begin();
+  const c418 = timeline.enter("sprite418");
+  timeline.leave();
+  timeline.end();
+  assert.equal(c418.frame, 1);
+  assert.equal(c418.playing, true, "pending play() is not clobbered by frame-1 stop");
+
+  // Entering sprite553 frame 2 with turbos >= 1 queues sprite550 flash
+  timeline.begin();
+  const c553 = timeline.enter("sprite553");
+  timeline.leave();
+  timeline.end();
+  c553.playing = true;
+  timeline.advance();
+  assert.equal(c553.frame, 2);
+  timeline.begin();
+  timeline.enter("sprite553");
+  const c550 = timeline.enter("sprite550");
+  timeline.leave();
+  timeline.leave();
+  timeline.end();
+  assert.equal(c550.playing, true, "sprite550 starts flashing when sprite553 enters frame 2");
+
+  // goto() on active stack top updates parentFrame for children entered in the same pass
+  timeline.begin();
+  const c379 = timeline.enter("sprite379");
+  timeline.goto(c379, 5, true);
+  const child = timeline.enter("sprite378");
+  timeline.leave();
+  timeline.leave();
+  timeline.end();
+  assert.equal(child.parentFrame, 5, "child sees updated parentFrame after goto()");
+});
