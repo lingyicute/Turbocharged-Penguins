@@ -3963,13 +3963,6 @@ function morphshape151(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -824 -824 0 0 Q -824 -824 -341 -341 -583 -583 -583 -583 -341 -341 -824 -824 0 0 -824 -824 341 341 -824 -824 582 582 -583 -583 824 824 -341 -341 824 824 0 0 824 824 341 341 582 582 582 582 341 341 824 824 0 0 824 824 -341 -341 824 824 -583 -583 582 582 -824 -824 341 341 -824 -824 0 0 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -3993,13 +3986,6 @@ function morphshape152(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -824 -824 0 0 Q -824 -824 -341 -341 -583 -583 -583 -583 -341 -341 -824 -824 0 0 -824 -824 341 341 -824 -824 582 582 -583 -583 824 824 -341 -341 824 824 0 0 824 824 341 341 582 582 582 582 341 341 824 824 0 0 824 824 -341 -341 824 824 -583 -583 582 582 -824 -824 341 341 -824 -824 0 0 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -9235,13 +9221,6 @@ function morphshape262(ctx,ctrans,frame,ratio,time){
 	drawMorphPath(ctx,pathData,ratio,false);
 
 	ctx.fill("evenodd");
-	var pathData="M -6400 -6400 -3588 -3588 L 6000 6000 -3588 -3588 6000 6000 3614 3614 -2918 -1398 3594 3614 -2861 1759 2937 -3482 -3550 -5309 3614 3614 -6400 -6400 3614 3614 -6400 -6400 -3588 -3588 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -20005,13 +19984,6 @@ function morphshape473(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -68 -287 665 665 Q -68 -288 362 272 145 -10 148 -7 359 268 -66 -285 662 662 -66 -285 965 1055 -66 -285 1178 1333 148 -7 1392 1611 362 272 1393 1611 665 665 1392 1611 967 1058 1178 1333 1181 1336 965 1055 1395 1614 662 662 1395 1615 359 268 1395 1614 145 -10 1181 1336 -68 -288 967 1058 -68 -287 665 665 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -20314,13 +20286,6 @@ function morphshape487(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -68 -287 665 665 Q -68 -288 362 272 145 -10 148 -7 359 268 -66 -285 662 662 -66 -285 965 1055 -66 -285 1178 1333 148 -7 1392 1611 362 272 1393 1611 665 665 1392 1611 967 1058 1178 1333 1181 1336 965 1055 1395 1614 662 662 1395 1615 359 268 1395 1614 145 -10 1181 1336 -68 -288 967 1058 -68 -287 665 665 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -20406,13 +20371,6 @@ function morphshape489(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -730 -949 1 0 Q -730 -950 -302 -393 -517 -672 -516 -672 -303 -394 -730 -950 0 0 -730 -950 303 393 -730 -950 516 671 -516 -672 730 949 -302 -393 731 949 1 0 730 949 303 393 516 671 517 671 303 393 731 949 0 0 731 950 -303 -394 731 949 -517 -672 517 671 -730 -950 303 393 -730 -949 1 0 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -20771,13 +20729,6 @@ function morphshape495(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -68 -287 665 665 Q -68 -288 362 272 145 -10 148 -7 359 268 -66 -285 662 662 -66 -285 965 1055 -66 -285 1178 1333 148 -7 1392 1611 362 272 1393 1611 665 665 1392 1611 967 1058 1178 1333 1181 1336 965 1055 1395 1614 662 662 1395 1615 359 268 1395 1614 145 -10 1181 1336 -68 -288 967 1058 -68 -287 665 665 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -20863,13 +20814,6 @@ function morphshape497(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -730 -949 1 0 Q -730 -950 -302 -393 -517 -672 -516 -672 -303 -394 -730 -950 0 0 -730 -950 303 393 -730 -950 516 671 -516 -672 730 949 -302 -393 731 949 1 0 730 949 303 393 516 671 517 671 303 393 731 949 0 0 731 950 -303 -394 731 949 -517 -672 517 671 -730 -950 303 393 -730 -949 1 0 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -21110,13 +21054,6 @@ function morphshape500(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -68 -287 665 665 Q -68 -288 362 272 145 -10 148 -7 359 268 -66 -285 662 662 -66 -285 965 1055 -66 -285 1178 1333 148 -7 1392 1611 362 272 1393 1611 665 665 1392 1611 967 1058 1178 1333 1181 1336 965 1055 1395 1614 662 662 1395 1615 359 268 1395 1614 145 -10 1181 1336 -68 -288 967 1058 -68 -287 665 665 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -21202,13 +21139,6 @@ function morphshape502(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -730 -949 1 0 Q -730 -950 -302 -393 -517 -672 -516 -672 -303 -394 -730 -950 0 0 -730 -950 303 393 -730 -950 516 671 -516 -672 730 949 -302 -393 731 949 1 0 730 949 303 393 516 671 517 671 303 393 731 949 0 0 731 950 -303 -394 731 949 -517 -672 517 671 -730 -950 303 393 -730 -949 1 0 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -21449,13 +21379,6 @@ function morphshape505(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -68 -287 665 665 Q -68 -288 362 272 145 -10 148 -7 359 268 -66 -285 662 662 -66 -285 965 1055 -66 -285 1178 1333 148 -7 1392 1611 362 272 1393 1611 665 665 1392 1611 967 1058 1178 1333 1181 1336 965 1055 1395 1614 662 662 1395 1615 359 268 1395 1614 145 -10 1181 1336 -68 -288 967 1058 -68 -287 665 665 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 
@@ -21541,13 +21464,6 @@ function morphshape507(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle = grd;
 	ctx.fillRect(-16384,-16384,32768,32768);
 	ctx.restore();
-	var pathData="M -730 -949 1 0 Q -730 -950 -302 -393 -517 -672 -516 -672 -303 -394 -730 -950 0 0 -730 -950 303 393 -730 -950 516 671 -516 -672 730 949 -302 -393 731 949 1 0 730 949 303 393 516 671 517 671 303 393 731 949 0 0 731 950 -303 -394 731 949 -517 -672 517 671 -730 -950 303 393 -730 -949 1 0 Z";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(0)/65535),Math.round(0+ratio*(1)/65535),((Math.round(0+ratio*(0)/65535))/255)]));
-	ctx.lineWidth=0.0+ratio*(0)/65535;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawMorphPath(ctx,pathData,ratio,true,scaleMode);
 
 }
 

@@ -304,9 +304,6 @@
         case 565:
           this.penguinFrame(clip, f);
           break;
-        case 569:
-          if (f === 33 && this.app.game) this.app.game.explDone = true;
-          break;
       }
       this.playFrameSounds(clip);
     }
@@ -339,7 +336,6 @@
         const g = this.app.game;
         g.explX = g.x;
         g.explY = g.y;
-        g.explOn = true;
         this.requestPlay('root/sprite569#0', 2, true);
       }
     }

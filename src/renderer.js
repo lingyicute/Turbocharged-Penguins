@@ -122,16 +122,6 @@
       return (ax + ay) * 0.5;
     }
 
-    deviceAxes(ctx, matrix) {
-      const p = ctx._matrix;
-      if (!p || !matrix) return null;
-      const dx = p[0] * matrix[0] + p[2] * matrix[1];
-      const dy = p[1] * matrix[0] + p[3] * matrix[1];
-      const ex = p[0] * matrix[2] + p[2] * matrix[3];
-      const ey = p[1] * matrix[2] + p[3] * matrix[3];
-      return [Math.hypot(dx, dy), Math.hypot(ex, ey)];
-    }
-
     cxKey(ctrans) {
       if (!ctrans || ctrans.isEmpty()) return '0';
       if (ctrans._key) return ctrans._key;
@@ -140,6 +130,7 @@
     }
 
     strokes(obj) {
+      if (obj.startsWith('morphshape')) return true;
       const fn = window[obj];
       if (typeof fn !== 'function') return true;
       if (fn._strokes === undefined)
@@ -174,8 +165,16 @@
         const c = document.createElement('canvas');
         c.width = 2;
         c.height = 2;
-        this._meter = c.getContext('2d');
-        if (window.enhanceContext) window.enhanceContext(this._meter);
+        const m = c.getContext('2d');
+        if (m) {
+          if (window.enhanceContext) window.enhanceContext(m);
+          const noop = () => {};
+          m.fill = noop;
+          m.stroke = noop;
+          m.clip = noop;
+          m.fillRect = noop;
+        }
+        this._meter = m;
       }
       const ctx = this._meter;
       if (!ctx) return null;
@@ -194,7 +193,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.rasterizing = true;
       try {
-        fn(ctx, ctrans, frame, ratio, 0);
+        fn(ctx, window.ctrans || ctrans, frame, ratio, 0);
       } catch (e) {
         return null;
       } finally {

@@ -69,3 +69,30 @@ test("imagesReady caches completion on shape function once all referenced images
   assert.equal(r.imagesReady("shapeWithImg"), true);
   assert.equal(completeReads, 1, "subsequent checks use cached _imgsReady flag");
 });
+
+test("localBounds stubs meter paint operations and passes identity cxform", () => {
+  let fills = 0, tints = 0;
+  const meterCtx = {
+    _matrix: [1, 0, 0, 1, 0, 0],
+    setTransform() {},
+    fill() { fills++; },
+    stroke() { fills++; },
+    clip() { fills++; },
+    fillRect() { fills++; }
+  };
+  const window = {ctrans: {isEmpty: () => true}, enhanceContext: c => c};
+  const document = {createElement: () => ({width: 0, height: 0, getContext: () => meterCtx})};
+  vm.runInNewContext(source("src/renderer.js"), {window, document});
+  const r = Object.create(window.OriginalArtRenderer.prototype);
+  window.shapeMeterTest = (ctx, cx) => {
+    if (!cx.isEmpty()) tints++;
+    ctx._localBox = {minX: 0, minY: 0, maxX: 10, maxY: 20, n: 2};
+    ctx.fill();
+    ctx.fillRect(-16384, -16384, 32768, 32768);
+  };
+  const b = r.localBounds("shapeMeterTest", 0, 0, {isEmpty: () => false});
+  assert.equal(b.maxX, 10);
+  assert.equal(fills, 0, "meter pass does not rasterize fills");
+  assert.equal(tints, 0, "meter pass uses identity cxform");
+  assert.equal(r.strokes("morphshape487"), true, "morphshape is excluded from static raster cache");
+});
