@@ -61,8 +61,10 @@
       requestAnimationFrame(t => this.loop(t));
     }
     readBest() {
-      try { return Math.max(0, Number(localStorage.getItem('turbo-penguins-best-cm')) || 0); }
-      catch (_) { return 0; }
+      try {
+        const n = Number(localStorage.getItem('turbo-penguins-best-cm'));
+        return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+      } catch (_) { return 0; }
     }
     saveBest(value) {
       this.storedBest = Math.max(this.storedBest, value);
@@ -146,6 +148,7 @@
       this.now = now;
       window.Physics._pointerX = this.pointer.x;
       this.audio.update(dt, this.mode === 'playing');
+      const wasPlaying = this.mode === 'playing';
       this.frameAcc += dt;
       let frames = 0;
       while (this.frameAcc >= FRAME_MS && frames++ < 4) {
@@ -153,7 +156,7 @@
         this.advanceFrame();
       }
       if (frames > 4) this.frameAcc = 0;
-      if (this.mode === 'playing') {
+      if (wasPlaying && this.mode === 'playing') {
         this.physAcc += dt;
         let steps = 0;
         while (this.physAcc >= PHYS_MS && steps++ < 7 && this.mode === 'playing') {

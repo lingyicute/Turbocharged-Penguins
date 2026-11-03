@@ -33738,6 +33738,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
           }
         }
       }
+      this.pending.length = 0;
       this.stackIndex = -1;
     }
 
@@ -33758,8 +33759,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       const path = parent.path + '/' + name + '#' + identity;
       const length = id ? this.length(id) : 1;
       let clip = this.clips.get(path);
-      if (clip && id === 25 && clip.parentFrame !== parent.frame &&
-          REPLACED_DELAYS[parent.id]?.includes(parent.frame)) {
+      if (clip && id === 25 && clip.parentFrame !== parent.frame) {
         this.clips.delete(path);
         clip = null;
       }
@@ -33804,7 +33804,10 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       // A goto that plays re-runs the frame, including its sound, even if
       // the playhead was already there. Internal loops must not pass retrigger
       // or a same-frame goto would recurse.
-      if (retrigger) clip.soundedFrame = 0;
+      if (retrigger) {
+        clip.soundedFrame = 0;
+        if (DELAYS[clip.id]?.[clip.frame]) this.clips.delete(clip.path + '/sprite25#0');
+      }
       this.onFrame(clip);
     }
 
@@ -33865,7 +33868,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         return;
       }
       if (BONUS_HOLD.has(id) && f === 1) clip.playing = false;
-      if (STOPS[id]?.includes(f)) clip.playing = false;
+      if (STOPS[id]?.includes(f) || DELAYS[id]?.[f]) clip.playing = false;
       if (BONUS_HOLD.has(id) && f === clip.length) clip.playing = false;
 
       switch (id) {
@@ -34155,7 +34158,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       this.stingLoading = true;
       fetch(urlFor(1))
         .then(r => r.arrayBuffer())
-        .then(buf => this.audioContext.decodeAudioData(buf.slice(0)))
+        .then(buf => this.audioContext.decodeAudioData(buf))
         .then(decoded => {
           const sting = this.seamlessLoops(decoded, 2);
           // One trimmed copy, looped by the audio clock. Not the doubled sting.
@@ -34417,7 +34420,8 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
       if (this.musicWasPlaying) {
         this.musicWasPlaying = false;
-        try { Promise.resolve(this.music.play()).catch(() => {}); } catch (_) {}
+        try { Promise.resolve(this.music.play()).catch(() => { this.musicStarted = false; }); }
+        catch (_) { this.musicStarted = false; }
       }
     }
 
@@ -35555,8 +35559,10 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       requestAnimationFrame(t => this.loop(t));
     }
     readBest() {
-      try { return Math.max(0, Number(localStorage.getItem('turbo-penguins-best-cm')) || 0); }
-      catch (_) { return 0; }
+      try {
+        const n = Number(localStorage.getItem('turbo-penguins-best-cm'));
+        return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+      } catch (_) { return 0; }
     }
     saveBest(value) {
       this.storedBest = Math.max(this.storedBest, value);
@@ -35640,6 +35646,7 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       this.now = now;
       window.Physics._pointerX = this.pointer.x;
       this.audio.update(dt, this.mode === 'playing');
+      const wasPlaying = this.mode === 'playing';
       this.frameAcc += dt;
       let frames = 0;
       while (this.frameAcc >= FRAME_MS && frames++ < 4) {
@@ -35647,7 +35654,7 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
         this.advanceFrame();
       }
       if (frames > 4) this.frameAcc = 0;
-      if (this.mode === 'playing') {
+      if (wasPlaying && this.mode === 'playing') {
         this.physAcc += dt;
         let steps = 0;
         while (this.physAcc >= PHYS_MS && steps++ < 7 && this.mode === 'playing') {
