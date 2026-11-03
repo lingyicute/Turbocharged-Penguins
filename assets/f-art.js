@@ -3515,15 +3515,8 @@ function shape129(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle=tocolor(ctrans.apply([183,12,157,1]));
 	drawPath(ctx,pathData,false);
 	ctx.fill("evenodd");
-	var pathData="M 467 82 L 636 82 780 82 836 82 990 82 1160 82 1308 82 1492 82 1647 82 1730 82 1878 82 2310 82 2758 82 2841 82 2989 82 3192 82 3313 82 M -2727 82 L -2526 82 -2378 82 -2288 82 -2140 82 -1956 82 -1801 82 -1719 82 -1237 82 -1134 82 -986 82 -799 82 -651 82 -561 82 -413 82 -37 82 467 82 M -3079 82 L -2875 82 -2727 82 M -3124 82 L -3079 82";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([95,122,198,0.0]));
-	ctx.lineWidth=0.05;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawPath(ctx,pathData,true,scaleMode);
-
 }
+shape129._noRaster = true;
 
 function sprite130(ctx,ctrans,frame,ratio,time){
 	var clips = [];

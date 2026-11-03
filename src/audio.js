@@ -153,9 +153,10 @@
         .then(r => r.arrayBuffer())
         .then(buf => this.audioContext.decodeAudioData(buf))
         .then(decoded => {
-          const sting = this.seamlessLoops(decoded, 2);
+          const bounds = this.findTrimBounds ? this.findTrimBounds(decoded) : null;
+          const sting = this.seamlessLoops(decoded, 2, bounds);
           // One trimmed copy, looped by the audio clock. Not the doubled sting.
-          const bed = this.seamlessLoop(decoded);
+          const bed = this.seamlessLoop(decoded, bounds);
           this.stingBuffer = sting;
           this.bedBuffer = bed;
           this.stingLoading = false;
@@ -171,8 +172,8 @@
         });
     }
 
-    seamlessLoops(buffer, loops) {
-      const ctx = this.audioContext;
+    findTrimBounds(buffer) {
+      if (!buffer || typeof buffer.getChannelData !== "function") return null;
       const channels = buffer.numberOfChannels;
       const rate = buffer.sampleRate;
       const src = [];
@@ -188,6 +189,17 @@
       let end = n - 1;
       while (end > start && !loud(end)) end--;
       if (end - start < rate * 0.2) { start = 0; end = n - 1; }
+      return {src, start, end};
+    }
+
+    seamlessLoops(buffer, loops, bounds = null) {
+      const ctx = this.audioContext;
+      const channels = buffer.numberOfChannels;
+      const rate = buffer.sampleRate;
+      const b = bounds || this.findTrimBounds(buffer);
+      const src = b.src;
+      const n = buffer.length;
+      let {start, end} = b;
       const pad = Math.floor(rate * 0.004);
       start = Math.max(0, start - pad);
       end = Math.min(n - 1, end + pad);
@@ -217,23 +229,13 @@
 
     // Single copy of sound 1 with the head/tail silence removed and a 10ms
     // overlap at the wrap, so BufferSource.loop has no gap between repeats.
-    seamlessLoop(buffer) {
+    seamlessLoop(buffer, bounds = null) {
       const ctx = this.audioContext;
       const channels = buffer.numberOfChannels;
       const rate = buffer.sampleRate;
-      const src = [];
-      for (let c = 0; c < channels; c++) src.push(buffer.getChannelData(c));
-      const n = buffer.length;
-      const thresh = 0.008;
-      const loud = i => {
-        for (let c = 0; c < channels; c++) if (Math.abs(src[c][i]) > thresh) return true;
-        return false;
-      };
-      let start = 0;
-      while (start < n && !loud(start)) start++;
-      let end = n - 1;
-      while (end > start && !loud(end)) end--;
-      if (end - start < rate * 0.2) { start = 0; end = n - 1; }
+      const b = bounds || this.findTrimBounds(buffer);
+      const src = b.src;
+      let {start, end} = b;
       const len = end - start + 1;
       const fade = Math.min(Math.floor(rate * 0.01), Math.floor(len / 8));
       const period = len - fade;

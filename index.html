@@ -1794,8 +1794,25 @@ function drawPath(ctx, p, doStroke, scaleMode) {
 })();
 
 function drawPlacedGlyphs(ctx, font, color, glyphs) {
-    for (var i = 0; i < glyphs.length; i++) {
+    var len = glyphs.length;
+    if (!len) return;
+    var m = ctx._matrix;
+    if (m && ctx.setTransform) {
+        ctx.save();
+        var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
+        for (var i = 0; i < len; i++) {
+            var g = glyphs[i];
+            if (g[0] === " ") continue;
+            var s = g[1], x = g[2], y = g[3];
+            ctx.setTransform(m0 * s, m1 * s, m2 * s, m3 * s, m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+            font(ctx, g[0], color);
+        }
+        ctx.restore();
+        return;
+    }
+    for (var i = 0; i < len; i++) {
         var g = glyphs[i];
+        if (g[0] === " ") continue;
         ctx.save();
         ctx.transform(g[1], 0, 0, g[1], g[2], g[3]);
         font(ctx, g[0], color);
@@ -1834,10 +1851,12 @@ function drawRightGlyphs(ctx, font, color, phrase, fu, size, right, baseline) {
     for (i = 0; i < phrase.length; i++) {
         ch = phrase.charAt(i);
         if (!Object.prototype.hasOwnProperty.call(fu, ch)) continue;
-        ctx.save();
-        ctx.transform(size, 0, 0, size, x, baseline);
-        font(ctx, ch, color);
-        ctx.restore();
+        if (ch !== " ") {
+            ctx.save();
+            ctx.transform(size, 0, 0, size, x, baseline);
+            font(ctx, ch, color);
+            ctx.restore();
+        }
         x += fu[ch] * size;
     }
 }
@@ -1850,10 +1869,12 @@ function drawCenterGlyphs(ctx, font, color, phrase, fu, size, anchor, baseline) 
     x = anchor - width / 2;
     for (i = 0; i < phrase.length; i++) {
         ch = phrase.charAt(i);
-        ctx.save();
-        ctx.transform(size, 0, 0, size, x, baseline);
-        font(ctx, ch, color);
-        ctx.restore();
+        if (ch !== " ") {
+            ctx.save();
+            ctx.transform(size, 0, 0, size, x, baseline);
+            font(ctx, ch, color);
+            ctx.restore();
+        }
         step = fu[ch];
         x += (step == null || step !== step) ? 0 : step * size;
     }
@@ -5377,15 +5398,8 @@ function shape129(ctx,ctrans,frame,ratio,time){
 	ctx.fillStyle=tocolor(ctrans.apply([183,12,157,1]));
 	drawPath(ctx,pathData,false);
 	ctx.fill("evenodd");
-	var pathData="M 467 82 L 636 82 780 82 836 82 990 82 1160 82 1308 82 1492 82 1647 82 1730 82 1878 82 2310 82 2758 82 2841 82 2989 82 3192 82 3313 82 M -2727 82 L -2526 82 -2378 82 -2288 82 -2140 82 -1956 82 -1801 82 -1719 82 -1237 82 -1134 82 -986 82 -799 82 -651 82 -561 82 -413 82 -37 82 467 82 M -3079 82 L -2875 82 -2727 82 M -3124 82 L -3079 82";
-	var scaleMode = "NORMAL";
-	ctx.strokeStyle=tocolor(ctrans.apply([95,122,198,0.0]));
-	ctx.lineWidth=0.05;
-	ctx.lineCap="round";
-	ctx.lineJoin="round";
-	drawPath(ctx,pathData,true,scaleMode);
-
 }
+shape129._noRaster = true;
 
 function sprite130(ctx,ctrans,frame,ratio,time){
 	var clips = [];
@@ -34144,9 +34158,10 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         .then(r => r.arrayBuffer())
         .then(buf => this.audioContext.decodeAudioData(buf))
         .then(decoded => {
-          const sting = this.seamlessLoops(decoded, 2);
+          const bounds = this.findTrimBounds ? this.findTrimBounds(decoded) : null;
+          const sting = this.seamlessLoops(decoded, 2, bounds);
           // One trimmed copy, looped by the audio clock. Not the doubled sting.
-          const bed = this.seamlessLoop(decoded);
+          const bed = this.seamlessLoop(decoded, bounds);
           this.stingBuffer = sting;
           this.bedBuffer = bed;
           this.stingLoading = false;
@@ -34162,8 +34177,8 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         });
     }
 
-    seamlessLoops(buffer, loops) {
-      const ctx = this.audioContext;
+    findTrimBounds(buffer) {
+      if (!buffer || typeof buffer.getChannelData !== "function") return null;
       const channels = buffer.numberOfChannels;
       const rate = buffer.sampleRate;
       const src = [];
@@ -34179,6 +34194,17 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       let end = n - 1;
       while (end > start && !loud(end)) end--;
       if (end - start < rate * 0.2) { start = 0; end = n - 1; }
+      return {src, start, end};
+    }
+
+    seamlessLoops(buffer, loops, bounds = null) {
+      const ctx = this.audioContext;
+      const channels = buffer.numberOfChannels;
+      const rate = buffer.sampleRate;
+      const b = bounds || this.findTrimBounds(buffer);
+      const src = b.src;
+      const n = buffer.length;
+      let {start, end} = b;
       const pad = Math.floor(rate * 0.004);
       start = Math.max(0, start - pad);
       end = Math.min(n - 1, end + pad);
@@ -34208,23 +34234,13 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
 
     // Single copy of sound 1 with the head/tail silence removed and a 10ms
     // overlap at the wrap, so BufferSource.loop has no gap between repeats.
-    seamlessLoop(buffer) {
+    seamlessLoop(buffer, bounds = null) {
       const ctx = this.audioContext;
       const channels = buffer.numberOfChannels;
       const rate = buffer.sampleRate;
-      const src = [];
-      for (let c = 0; c < channels; c++) src.push(buffer.getChannelData(c));
-      const n = buffer.length;
-      const thresh = 0.008;
-      const loud = i => {
-        for (let c = 0; c < channels; c++) if (Math.abs(src[c][i]) > thresh) return true;
-        return false;
-      };
-      let start = 0;
-      while (start < n && !loud(start)) start++;
-      let end = n - 1;
-      while (end > start && !loud(end)) end--;
-      if (end - start < rate * 0.2) { start = 0; end = n - 1; }
+      const b = bounds || this.findTrimBounds(buffer);
+      const src = b.src;
+      let {start, end} = b;
       const len = end - start + 1;
       const fade = Math.min(Math.floor(rate * 0.01), Math.floor(len / 8));
       const period = len - fade;
@@ -35211,8 +35227,9 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       // Hot path: ~hundreds of place() calls per frame. Fast charCode prefix
       // check before any suffix scan or string allocation.
       const c0 = obj.charCodeAt(0);
-      if ((c0 === 115 && obj.charCodeAt(1) === 104) || c0 === 105 || c0 === 109) {
-        if (this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
+      if ((c0 === 115 && obj.charCodeAt(1) === 104) || c0 === 105 || c0 === 109 || c0 === 116) {
+        if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0 && blend <= 1 && (!ctx || !ctx._floeMaskPathOnly)) return;
+        if (c0 !== 116 && this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
       }
       // sprite13 is the white corner cap (shape12), placed on all four corners.
       if (obj === 'sprite13') return;

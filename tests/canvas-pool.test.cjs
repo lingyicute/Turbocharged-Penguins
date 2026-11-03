@@ -225,3 +225,22 @@ test("setTransform() with no arguments resets _matrix and clip(Path2D) clears _c
   ctx.clip({});
   assert.equal(ctx._clipBox, null, "Path2D clip does not reuse _pathBox");
 });
+
+test("drawPlacedGlyphs hoists save/restore and skips space glyphs", () => {
+  const {core} = loadCore({supportsReset: true});
+  const ctx = core.enhanceContext(new core.CanvasRenderingContext2D());
+  let saves = 0, restores = 0, glyphsDrawn = [];
+  const origSave = ctx.save.bind(ctx);
+  const origRestore = ctx.restore.bind(ctx);
+  ctx.save = () => { saves++; origSave(); };
+  ctx.restore = () => { restores++; origRestore(); };
+  const font = (_ctx, ch) => glyphsDrawn.push(ch);
+  core.drawPlacedGlyphs(ctx, font, "rgba(0,0,0,1)", [
+    ["A", 0.5, 10, 20],
+    [" ", 0.5, 20, 20],
+    ["B", 0.5, 30, 20]
+  ]);
+  assert.equal(saves, 1, "single save per glyph run");
+  assert.equal(restores, 1, "single restore per glyph run");
+  assert.deepEqual(glyphsDrawn, ["A", "B"], "space glyph is skipped");
+});
