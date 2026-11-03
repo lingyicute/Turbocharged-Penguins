@@ -92,3 +92,34 @@ test('tint results are cached on images, never on or in pooled canvases', () => 
   assert.equal(stage._cxCache, undefined, 'pooled canvases carry no cache into the next frame');
   assert.notEqual(tint.applyToImage(stage), first);
 });
+
+test("drawPath and drawMorphPath preserve positive stroke width under flip and rotation and restore lineWidth", () => {
+  const {core} = loadCore({supportsReset: true});
+  const widths = [];
+  let savedWidth = 0;
+  const ctx = {
+    _matrix: [-0.8, 0, 0, -1.2, 0, 0],
+    lineWidth: 4,
+    save() { savedWidth = this.lineWidth; },
+    restore() { this.lineWidth = savedWidth; },
+    setTransform() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    quadraticCurveTo() {},
+    closePath() {},
+    stroke() { widths.push(this.lineWidth); }
+  };
+  core.drawPath(ctx, "M 0 0 L 10 10", true, "NORMAL");
+  assert.ok(widths[0] > 0, "flipped NORMAL stroke stays positive");
+  assert.equal(ctx.lineWidth, 4, "outer lineWidth is restored after stroke");
+
+  ctx._matrix = [0, -1.5, 1.5, 0, 0, 0];
+  core.drawPath(ctx, "M 0 0 L 10 10", true, "NORMAL");
+  assert.equal(widths[1], 4 * 20 * 1.5, "90-degree rotated NORMAL stroke uses off-diagonal scale");
+
+  ctx._matrix = [-1, 0, 0, -2, 0, 0];
+  core.drawMorphPath(ctx, "M 0 0 0 0 L 10 10 20 20", 32768, true, "VERTICAL");
+  assert.equal(widths[2], 4 * 20 * 2, "flipped VERTICAL morph stroke stays positive");
+  assert.equal(ctx.lineWidth, 4);
+});
