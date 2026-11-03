@@ -1738,8 +1738,25 @@ function drawPath(ctx, p, doStroke, scaleMode) {
 })();
 
 function drawPlacedGlyphs(ctx, font, color, glyphs) {
-    for (var i = 0; i < glyphs.length; i++) {
+    var len = glyphs.length;
+    if (!len) return;
+    var m = ctx._matrix;
+    if (m && ctx.setTransform) {
+        ctx.save();
+        var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
+        for (var i = 0; i < len; i++) {
+            var g = glyphs[i];
+            if (g[0] === " ") continue;
+            var s = g[1], x = g[2], y = g[3];
+            ctx.setTransform(m0 * s, m1 * s, m2 * s, m3 * s, m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+            font(ctx, g[0], color);
+        }
+        ctx.restore();
+        return;
+    }
+    for (var i = 0; i < len; i++) {
         var g = glyphs[i];
+        if (g[0] === " ") continue;
         ctx.save();
         ctx.transform(g[1], 0, 0, g[1], g[2], g[3]);
         font(ctx, g[0], color);
@@ -1778,10 +1795,12 @@ function drawRightGlyphs(ctx, font, color, phrase, fu, size, right, baseline) {
     for (i = 0; i < phrase.length; i++) {
         ch = phrase.charAt(i);
         if (!Object.prototype.hasOwnProperty.call(fu, ch)) continue;
-        ctx.save();
-        ctx.transform(size, 0, 0, size, x, baseline);
-        font(ctx, ch, color);
-        ctx.restore();
+        if (ch !== " ") {
+            ctx.save();
+            ctx.transform(size, 0, 0, size, x, baseline);
+            font(ctx, ch, color);
+            ctx.restore();
+        }
         x += fu[ch] * size;
     }
 }
@@ -1794,10 +1813,12 @@ function drawCenterGlyphs(ctx, font, color, phrase, fu, size, anchor, baseline) 
     x = anchor - width / 2;
     for (i = 0; i < phrase.length; i++) {
         ch = phrase.charAt(i);
-        ctx.save();
-        ctx.transform(size, 0, 0, size, x, baseline);
-        font(ctx, ch, color);
-        ctx.restore();
+        if (ch !== " ") {
+            ctx.save();
+            ctx.transform(size, 0, 0, size, x, baseline);
+            font(ctx, ch, color);
+            ctx.restore();
+        }
         step = fu[ch];
         x += (step == null || step !== step) ? 0 : step * size;
     }

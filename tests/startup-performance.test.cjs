@@ -96,3 +96,20 @@ test("localBounds stubs meter paint operations and passes identity cxform", () =
   assert.equal(tints, 0, "meter pass uses identity cxform");
   assert.equal(r.strokes("morphshape487"), true, "morphshape is excluded from static raster cache");
 });
+
+test("zero-alpha leaf shapes and texts are skipped before tryBlit or basePlace", () => {
+  let blits = 0, baseCalls = 0;
+  const {r, window} = renderer();
+  r.app = {rootFrame: 115, game: null, timeline: {enter() {}, leave() {}}};
+  r.tryBlit = () => { blits++; return false; };
+  r.basePlace = () => { baseCalls++; };
+  const zeroCx = {a_mult: 0, a_add: 0};
+  const visibleCx = {a_mult: 255, a_add: 0};
+  r.place("shape539", {}, {}, [1, 0, 0, 1, 0, 0], zeroCx, 1, 0, 0, 0);
+  r.place("text463", {}, {}, [1, 0, 0, 1, 0, 0], zeroCx, 1, 0, 0, 0);
+  assert.equal(blits, 0);
+  assert.equal(baseCalls, 0);
+  r.place("shape539", {}, {}, [1, 0, 0, 1, 0, 0], visibleCx, 1, 0, 0, 0);
+  assert.equal(blits, 1);
+  assert.equal(baseCalls, 1);
+});

@@ -446,8 +446,9 @@
       // Hot path: ~hundreds of place() calls per frame. Fast charCode prefix
       // check before any suffix scan or string allocation.
       const c0 = obj.charCodeAt(0);
-      if ((c0 === 115 && obj.charCodeAt(1) === 104) || c0 === 105 || c0 === 109) {
-        if (this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
+      if ((c0 === 115 && obj.charCodeAt(1) === 104) || c0 === 105 || c0 === 109 || c0 === 116) {
+        if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0 && blend <= 1 && (!ctx || !ctx._floeMaskPathOnly)) return;
+        if (c0 !== 116 && this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
       }
       // sprite13 is the white corner cap (shape12), placed on all four corners.
       if (obj === 'sprite13') return;
