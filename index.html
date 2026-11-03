@@ -1450,21 +1450,20 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
 
     if (doStroke) {
         trackStrokePad(ctx, scaleMode);
+        ctx.save();
         switch (scaleMode) {
             case "NONE":
                 break;
             case "NORMAL":
-                ctx.lineWidth *= 20 * Math.max(m[0], m[3]);
+                ctx.lineWidth *= 20 * Math.max(Math.abs(m[0]), Math.abs(m[1]), Math.abs(m[2]), Math.abs(m[3]));
                 break;
             case "VERTICAL":
-                ctx.lineWidth *= 20 * m[3];
+                ctx.lineWidth *= 20 * Math.hypot(m[2], m[3]);
                 break;
             case "HORIZONTAL":
-                ctx.lineWidth *= 20 * m[0];
+                ctx.lineWidth *= 20 * Math.hypot(m[0], m[1]);
                 break;
         }
-
-        ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
         ctx.beginPath();
@@ -1607,21 +1606,20 @@ function drawPath(ctx, p, doStroke, scaleMode) {
     if (doStroke) {
         trackStrokePad(ctx, scaleMode);
         var m = ctx._matrix;
+        ctx.save();
         switch (scaleMode) {
             case "NONE":
                 break;
             case "NORMAL":
-                ctx.lineWidth *= 20 * Math.max(m[0], m[3]);
+                ctx.lineWidth *= 20 * Math.max(Math.abs(m[0]), Math.abs(m[1]), Math.abs(m[2]), Math.abs(m[3]));
                 break;
             case "VERTICAL":
-                ctx.lineWidth *= 20 * m[3];
+                ctx.lineWidth *= 20 * Math.hypot(m[2], m[3]);
                 break;
             case "HORIZONTAL":
-                ctx.lineWidth *= 20 * m[0];
+                ctx.lineWidth *= 20 * Math.hypot(m[0], m[1]);
                 break;
         }
-
-        ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
         ctx.beginPath();
