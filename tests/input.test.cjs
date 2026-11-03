@@ -67,3 +67,28 @@ test('a pickup is collected on pointer down, before the cliff scrolls away', asy
   assert.ok(b.collected > 0);
   assert.equal(g.turbos, 1);
 });
+
+test('secondary mouse buttons do not bounce the penguin', async () => {
+  const {app, canvasEvents} = await createApp();
+  const g = app.game;
+  g.x = 300;
+  g.y = 200;
+  canvasEvents.pointerdown(pointer(300, 200, {button: 2}));
+  assert.equal(g.hit, false);
+  canvasEvents.pointerdown(pointer(300, 200, {button: 0}));
+  assert.equal(g.hit, true);
+});
+
+test('keys pressed with Ctrl, Meta or Alt are left to the browser', async () => {
+  const {app, documentEvents} = await createApp();
+  const key = (code, extra = {}) => ({code, repeat: false, preventDefault() { this.prevented = true; }, ...extra});
+  for (const mod of ['ctrlKey', 'metaKey', 'altKey']) {
+    app.game.turbos = 3;
+    const e = key('Space', {[mod]: true});
+    documentEvents.keydown(e);
+    assert.equal(app.game.turbos, 3, mod);
+    assert.ok(!e.prevented, mod);
+  }
+  documentEvents.keydown(key('Space'));
+  assert.equal(app.game.turbos, 0);
+});

@@ -563,6 +563,7 @@
         if (this.mode==='select') this.hoverPenguin(/^penguin[123]$/.test(area||'') ? +area.slice(-1) : 0);
       });
       this.canvas.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.preventDefault();
         this.canvas.focus({preventScroll:true});
         if (!this.audio.unlocked) {
@@ -584,6 +585,7 @@
         try {this.canvas.setPointerCapture(e.pointerId);} catch (_) {}
       });
       this.canvas.addEventListener('pointerup', e => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.preventDefault();
         const p=this.stagePoint(e);this.pointer=p;
         const hit=this.hitArea(p.x,p.y);
@@ -600,7 +602,7 @@
         this.cancelCharge();
       });
       document.addEventListener('keydown', e => {
-        if (e.repeat) return;
+        if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
         if (['Space','Enter','Digit1','Digit2','Digit3','KeyM'].includes(e.code))
           e.preventDefault();
         if (!this.audio.unlocked) {
