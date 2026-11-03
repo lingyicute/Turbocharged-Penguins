@@ -152,3 +152,34 @@ test("cxform.merge returns the other operand without allocation when either side
   assert.equal(tint.merge(id), tint);
   assert.equal(id.merge(id), id);
 });
+
+test("drawMorphPath handles Z closePath, BlendModes.normal binds _cut, and restore pops _clipBox", () => {
+  const {core} = loadCore({supportsReset: true});
+  const ops = [];
+  const ctx = core.enhanceContext(new core.CanvasRenderingContext2D());
+  ctx.lineWidth = 2;
+  ctx.closePath = () => ops.push("closePath");
+  ctx.stroke = () => ops.push("stroke");
+  core.drawMorphPath(ctx, "M 0 0 0 0 L 10 0 20 0 Z L 5 5 10 10", 32768, true, "NONE");
+  assert.ok(ops.includes("closePath"), "stroked morph path emits closePath for Z");
+  ops.length = 0;
+  core.drawMorphPath(ctx, "M 0 0 0 0 L 10 0 20 0 Z", 0, false);
+  assert.ok(ops.includes("closePath"), "filled morph path emits closePath for Z");
+
+  // _clipBox is scoped to save/restore
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(10, 10);
+  ctx.clip();
+  assert.ok(ctx._clipBox, "clip records _clipBox");
+  ctx.restore();
+  assert.equal(ctx._clipBox, null, "restore clears inner _clipBox");
+
+  // BlendModes.blendData mode 0/1 (normal) does not throw on this._cut
+  const src = new Uint8ClampedArray([200, 100, 50, 128]);
+  const dst = new Uint8ClampedArray([20, 40, 60, 255]);
+  const out = new Uint8ClampedArray(4);
+  core.BlendModes.blendData(src, dst, out, 1);
+  assert.ok(out[3] > 0);
+});

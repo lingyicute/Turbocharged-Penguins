@@ -59,6 +59,7 @@ var createCanvas = function (width, height) {
             if (g._enhanced) {
                 g._matrix = [1, 0, 0, 1, 0, 0];
                 g._savedMatrices = [];
+                g._savedClipBoxes = [];
                 g._clipBox = null;
                 g._pathBox = null;
                 g._cachedPath = null;
@@ -652,10 +653,10 @@ BlendModes._cut = function (v) {
 
 BlendModes.normal = function (src, dst, result, pos) {
     var am = (255 - src[pos + 3]) / 255;
-    result[pos] = this._cut(src[pos] * src[pos + 3] / 255 + dst[pos] * dst[pos + 3] / 255 * am);
-    result[pos + 1] = this._cut(src[pos + 1] * src[pos + 3] / 255 + dst[pos + 1] * dst[pos + 3] / 255 * am);
-    result[pos + 2] = this._cut(src[pos + 2] * src[pos + 3] / 255 + dst[pos + 2] * dst[pos + 3] / 255 * am);
-    result[pos + 3] = this._cut(src[pos + 3] + dst[pos + 3] * am);
+    result[pos] = BlendModes._cut(src[pos] * src[pos + 3] / 255 + dst[pos] * dst[pos + 3] / 255 * am);
+    result[pos + 1] = BlendModes._cut(src[pos + 1] * src[pos + 3] / 255 + dst[pos + 1] * dst[pos + 3] / 255 * am);
+    result[pos + 2] = BlendModes._cut(src[pos + 2] * src[pos + 3] / 255 + dst[pos + 2] * dst[pos + 3] / 255 * am);
+    result[pos + 3] = BlendModes._cut(src[pos + 3] + dst[pos + 3] * am);
 };
 
 BlendModes.layer = function (src, dst, result, pos) {
@@ -833,6 +834,8 @@ function concatMatrix(m1, m2) {
     proto.save = function () {
         if (this._enhanced) {
             this._savedMatrices.push(this._matrix);
+            if (!this._savedClipBoxes) this._savedClipBoxes = [];
+            this._savedClipBoxes.push(this._clipBox || null);
         }
         return origSave.call(this);
     };
@@ -842,6 +845,7 @@ function concatMatrix(m1, m2) {
             if (this._savedMatrices.length === 0) return;
             origRestore.call(this);
             this._matrix = this._savedMatrices.pop();
+            this._clipBox = this._savedClipBoxes && this._savedClipBoxes.length ? this._savedClipBoxes.pop() : null;
             return;
         }
         return origRestore.call(this);
@@ -911,6 +915,8 @@ var enhanceContext = function (context) {
     }
     context._matrix = [1, 0, 0, 1, 0, 0];
     context._savedMatrices = [];
+    context._savedClipBoxes = [];
+    context._clipBox = null;
     return context;
 };
 
@@ -1343,6 +1349,9 @@ function parseMorphPathString(p) {
             case 'Q':
                 drawCommand = tok;
                 break;
+            case 'Z':
+                ops.push(0);
+                break;
             default:
                 switch (drawCommand) {
                     case 'L':
@@ -1437,6 +1446,8 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
                     m0 * qx + m2 * qy + m4, m1 * qx + m3 * qy + m5
                 );
                 i += 8;
+            } else if (cmd === 0) {
+                ctx.closePath();
             }
         }
         ctx.stroke();
@@ -1460,6 +1471,8 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
                 ops[i + 4] + (ops[i + 5] - ops[i + 4]) * rf, ops[i + 6] + (ops[i + 7] - ops[i + 6]) * rf
             );
             i += 8;
+        } else if (cmd === 0) {
+            ctx.closePath();
         }
     }
 }
@@ -1678,9 +1691,9 @@ function drawPath(ctx, p, doStroke, scaleMode) {
     };
     proto.clip = function () {
         var b = this._pathBox;
-        if (b && b.n && this._matrix) {
-            this._clipBox = {minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY, m: this._matrix.slice()};
-        }
+        this._clipBox = (b && b.n && this._matrix)
+            ? {minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY, m: this._matrix.slice()}
+            : null;
         return origClip.apply(this, arguments);
     };
     proto.fillRect = function (x, y, w, h) {
