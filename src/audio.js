@@ -55,6 +55,8 @@
       this.bedGain = null;
       this.bedBuffer = null;
       this.bedPending = false;
+      this.hiddenPaused = false;
+      this.musicWasPlaying = false;
 
       try {
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -372,6 +374,29 @@
       this.fade = clamp(this.fade + (playing ? 1 : -1) * dt / 1200, 0, 1);
       const vol = this.muted ? 0 : this.fade * this.musicVolume;
       this.setMusicVolume(vol);
+    }
+
+    // Pause everything while the page is hidden. The game loop stops with the
+    // tab, so otherwise the music bed would keep looping over a frozen game.
+    setHidden(hidden) {
+      const ctx = this.audioContext;
+      if (hidden) {
+        this.hiddenPaused = true;
+        if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
+        if (!this.music.paused) {
+          this.musicWasPlaying = true;
+          this.music.pause();
+        }
+        return;
+      }
+      if (!this.hiddenPaused) return;
+      this.hiddenPaused = false;
+      if (!this.unlocked) return;
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+      if (this.musicWasPlaying) {
+        this.musicWasPlaying = false;
+        try { Promise.resolve(this.music.play()).catch(() => {}); } catch (_) {}
+      }
     }
 
     toggle() {

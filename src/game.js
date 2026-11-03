@@ -601,6 +601,9 @@
         this.pressed=null;
         this.cancelCharge();
       });
+      document.addEventListener('visibilitychange', () => {
+        if (this.audio.setHidden) this.audio.setHidden(document.hidden);
+      });
       document.addEventListener('keydown', e => {
         if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
         if (['Space','Enter','Digit1','Digit2','Digit3','KeyM'].includes(e.code))

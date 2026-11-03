@@ -337,3 +337,36 @@ test('without Web Audio, unlocking starts the media element directly', async () 
   assert.equal(plays, 1);
   assert.equal(audio.musicStarted, true);
 });
+
+test('hiding the page suspends audio and showing it resumes the music', async () => {
+  const log = [];
+  const window = {};
+  class FakeAudio {
+    constructor() { this.paused = true; }
+    play() { this.paused = false; log.push('music.play'); return Promise.resolve(); }
+    pause() { this.paused = true; log.push('music.pause'); }
+  }
+  class FakeAudioContext {
+    constructor() { this.state = 'running'; }
+    suspend() { this.state = 'suspended'; log.push('ctx.suspend'); return Promise.resolve(); }
+    resume() { this.state = 'running'; log.push('ctx.resume'); return Promise.resolve(); }
+  }
+  window.AudioContext = FakeAudioContext;
+  const context = vm.createContext({window, Audio: FakeAudio});
+  loadSource(context, 'audio.js');
+  const audio = new window.GameAudio();
+  audio.unlocked = true;
+  audio.music.play();
+  log.length = 0;
+
+  audio.setHidden(true);
+  await nextTick();
+  assert.ok(log.includes('ctx.suspend') && log.includes('music.pause'));
+  log.length = 0;
+  audio.setHidden(false);
+  await nextTick();
+  assert.ok(log.includes('ctx.resume') && log.includes('music.play'));
+  log.length = 0;
+  audio.setHidden(false);
+  assert.deepEqual(log, [], 'showing an already visible page does nothing');
+});
