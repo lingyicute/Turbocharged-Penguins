@@ -24,7 +24,7 @@ audio = {}
 for path in sorted((ROOT / "assets/audio").glob("*.mp3")):
     try:
         stem = int(path.stem)
-    except:
+    except ValueError:
         continue
     audio[stem] = "data:audio/mpeg;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
 wav = ROOT / "assets/audio/315.wav"
@@ -34,8 +34,10 @@ if wav.exists():
 def inline_script(content):
     return "<script>\n" + re.sub(r"</script", r"<\\/script", content, flags=re.I) + "\n</script>"
 
+# Callable replacement: a plain string would have backslashes in the CSS
+# interpreted as regex escapes (e.g. content: "\201C").
 page = re.sub(r'<link rel="stylesheet" href="src/style.css">',
-              '<style>\n' + STYLE + '\n</style>', SOURCE, count=1)
+              lambda _: '<style>\n' + STYLE + '\n</style>', SOURCE, count=1)
 page = re.sub(r'\s*<script defer src="assets/canvas-core.js"></script>', '', page, count=1)
 page = re.sub(r'\s*<script defer src="assets/f-art.js"></script>', '', page, count=1)
 page = re.sub(r'\s*<script defer src="src/f-data.js"></script>', '', page, count=1)
