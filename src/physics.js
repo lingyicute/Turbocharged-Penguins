@@ -171,7 +171,7 @@
       };
     }
 
-    static hitTests(g, audio) {
+    static hitTests(g, audio, now = 0) {
       const inCliff = Math.floor((g.bgY - g.y) / CONFIG.cliffTileHeight) <= CONFIG.maxCliffTiles;
       // A wall hit plays sound 3 now and sound 4 seven frames later.
       if (inCliff && g.x < 54 && g.vx < 0) {
@@ -190,7 +190,7 @@
           const by = nTileY + b.y + BONUS_CENTER_OFFSET;
           const dx=(g.x-bx)/36, dy=(g.y-by)/48;
           if (g.y>-10 && dx*dx+dy*dy<1) {
-            Physics.collectBonus(b, g, audio);
+            Physics.collectBonus(b, g, audio, now);
           }
         }
       }

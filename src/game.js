@@ -259,12 +259,14 @@
         case 'menuIn':
           this.setFrame(53);
           this.panelFrame = Math.min(65, this.panelFrame + 1);
+          this.syncPanelSound();
           if (this.panelFrame === 65) this.mode = 'menu';
           break;
         case 'menu': this.setFrame(53); break;
         case 'menuOut':
           this.setFrame(53);
           this.panelFrame++;
+          this.syncPanelSound();
           if (this.panelFrame >= 71) {
             this.panelFrame = 1;
             this.chooseTime = 0;
@@ -334,7 +336,7 @@
       const g = this.game;
       if (!g) return;
       window.Physics.applyGravity(g);
-      window.Physics.hitTests(g, this.audio);
+      window.Physics.hitTests(g, this.audio, this.now);
       if (this.mode !== 'playing') { this.flushCues(); return; }
       window.Physics.movePenguin(g);
       window.Physics.ensureTiles(g);
@@ -373,9 +375,19 @@
       // Clear the sounded marker so a second visit to that panel frame still plays.
       const panel = this.timeline.byId.get(257) || this.timeline.lookup('root/sprite257#0');
       if (panel) panel.soundedFrame = 0;
+      this.pressed = null;
       this.mode='ending';
       this.setFrame(116);
       this.transitionTick=0;
+      this.syncPanelSound();
+    }
+
+    syncPanelSound() {
+      const panel = this.timeline.byId?.get(257) || this.timeline.lookup?.('root/sprite257#0');
+      if (panel && this.timeline.playFrameSounds) {
+        panel.frame = Math.max(1, this.panelFrame);
+        this.timeline.playFrameSounds(panel);
+      }
     }
 
     advanceEndingPanel() {
@@ -386,6 +398,7 @@
           this.panelFrame = this.panelStop;
           this.panelPhase = 'hold';
         }
+        this.syncPanelSound();
         return;
       }
       if (this.panelPhase === 'out') {
@@ -394,17 +407,25 @@
           this.panelFrame = this.panelGoto;
           this.panelPhase = 'dest';
         }
+        this.syncPanelSound();
         return;
       }
-      if (this.panelPhase === 'dest' && this.panelFrame < this.resultTarget) this.panelFrame++;
+      if (this.panelPhase === 'dest' && this.panelFrame < this.resultTarget) {
+        this.panelFrame++;
+        this.syncPanelSound();
+      }
     }
 
     continuePanel() {
       if (this.mode !== 'ending' || this.panelPhase !== 'hold') return;
+      this.pressed = null;
       this.panelPhase = 'out';
       this.panelFrame++;
-      const panel = this.timeline.byId.get(257) || this.timeline.lookup('root/sprite257#0');
-      if (panel) panel.soundedFrame = this.panelFrame;
+      const panel = this.timeline.byId?.get(257) || this.timeline.lookup?.('root/sprite257#0');
+      if (panel) {
+        panel.frame = this.panelFrame;
+        panel.soundedFrame = this.panelFrame;
+      }
       this.audio.effect(96, 0.7);
     }
 
@@ -428,10 +449,13 @@
     }
     chargePenguin(n) {
       if (this.mode !== 'select') return;
-      if (this.charging && this.charging !== n) this.cancelCharge();
+      n = clamp(n, 1, 3);
+      if (this.charging === n) return;
+      if (this.charging) this.cancelCharge();
       this.charging = n;
       const clip = this.penguinClip(n);
       if (clip) this.timeline.goto(clip, 19, true);
+      else if (this.timeline.requestPlay) this.timeline.requestPlay(`root/sprite380#0/sprite379#0/sprite378#p${n}`, 19, true);
       const blurs = this.timeline.lookup ? this.timeline.lookup('root/sprite403#0') : null;
       if (blurs) this.timeline.goto(blurs, n, false);
       else if (this.timeline.requestPlay) this.timeline.requestPlay('root/sprite403#0', n, false);
@@ -485,11 +509,13 @@
     startMenu() {
       if (this.mode!=='menu') return;
       this.audio.unlock();
+      this.pressed = null;
       this.mode='menuOut';
       this.panelFrame=65;
     }
     restart() {
       if (this.mode!=='result' || this.panelFrame===140) return;
+      this.pressed = null;
       this.audio.effect(96,0.65);
       this.mode='restarting';
       this.rootTime=0;
@@ -498,6 +524,7 @@
     }
     submitScore() {
       if (this.mode!=='result' || (this.panelFrame!==72 && this.panelFrame!==103 && this.panelFrame!==179)) return;
+      this.pressed = null;
       this.audio.effect(96,0.55);
       this.panelFrame=140;
       this.transitionTick=0;
@@ -570,7 +597,7 @@
     }
     bindInputs() {
       this.canvas.addEventListener('pointermove', e => {
-        const p=this.stagePoint(e);this.pointer=p;
+        const p=this.stagePoint(e);this.pointer=p;window.Physics._pointerX=p.x;
         const area=this.hitArea(p.x,p.y);
         this.canvas.style.cursor = !this.audio.unlocked || area ? 'pointer' : 'default';
         if (this.mode==='select') this.hoverPenguin(/^penguin[123]$/.test(area||'') ? +area.slice(-1) : 0);
@@ -582,12 +609,13 @@
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.preventDefault();
         this.canvas.focus({preventScroll:true});
+        const p=this.stagePoint(e);this.pointer=p;window.Physics._pointerX=p.x;
         if (!this.audio.unlocked) {
           this.audio.unlock();
           this.pressed = null;
+          this.canvas.style.cursor = this.hitArea(p.x,p.y) ? 'pointer' : 'default';
           return;
         }
-        const p=this.stagePoint(e);this.pointer=p;
         const area=this.hitArea(p.x,p.y);
         if (area==='penguin' || (area && typeof area==='object')) {
           // The cliff scrolls hundreds of px/s, so a pickup is gone from under
@@ -603,7 +631,7 @@
       this.canvas.addEventListener('pointerup', e => {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.preventDefault();
-        const p=this.stagePoint(e);this.pointer=p;
+        const p=this.stagePoint(e);this.pointer=p;window.Physics._pointerX=p.x;
         const hit=this.hitArea(p.x,p.y);
         const same=hit && hit===this.pressed;
         const wasCharge=this.charging;
@@ -612,6 +640,7 @@
           if (same) this.choosePenguin(wasCharge);
           else this.cancelCharge();
         } else if (same) this.activate(hit,p.x,p.y);
+        this.canvas.style.cursor = !this.audio.unlocked || this.hitArea(p.x,p.y) ? 'pointer' : 'default';
       });
       this.canvas.addEventListener('pointercancel', () => {
         this.pressed=null;
