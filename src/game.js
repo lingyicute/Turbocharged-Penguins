@@ -572,7 +572,9 @@
         }
         const p=this.stagePoint(e);this.pointer=p;
         const area=this.hitArea(p.x,p.y);
-        if (area==='penguin') {
+        if (area==='penguin' || (area && typeof area==='object')) {
+          // The cliff scrolls hundreds of px/s, so a pickup is gone from under
+          // the pointer by release time. Act on press, like the penguin.
           this.activate(area,p.x,p.y);
           this.pressed=null;
         } else if (typeof area==='string' && /^penguin[123]$/.test(area)) {
