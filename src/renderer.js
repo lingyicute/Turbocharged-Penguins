@@ -14,6 +14,32 @@
   const FONT89_ADV = Object.freeze({'.': 190, 'm': 606,
     '0': 381, '1': 381, '2': 381, '3': 381, '4': 381,
     '5': 381, '6': 381, '7': 381, '8': 381, '9': 381});
+  const SKIP_TILE_SPRITES = new Set(['sprite510', 'sprite514', 'sprite520', 'sprite526']);
+  const BOLT_PLACED = 0.572601318359375;
+  const BOLT_UNIT = 1 / (0.05 * BOLT_PLACED);
+  const BOLT_CX = 420 / BOLT_PLACED;
+  const BOLT_CY = (662 - 154) / BOLT_PLACED;
+  const BOLT_PTS = Object.freeze([
+    [7.33, -16], [-12.67, 4], [-0.67, 4], [-6, 16],
+    [12.67, 0], [0.67, 0], [8.67, -16]
+  ].map(([x, y]) => Object.freeze([BOLT_CX + x * BOLT_UNIT, BOLT_CY + y * BOLT_UNIT])));
+  const scaleMap = (fu, size) => {
+    const out = {};
+    for (const ch of Object.keys(fu)) out[ch] = fu[ch] * size;
+    return Object.freeze(out);
+  };
+  const FONT89_ADV_105 = scaleMap(FONT89_ADV, 1.05);
+  const FONT89_ADV_175 = scaleMap(FONT89_ADV, 1.75);
+  const NO_RECORD_ADV = scaleMap({
+    ' ':191.1, '-':328.2, 'A':519.7, 'L':440.9, 'N':566, 'R':530.1, 'Y':423.3,
+    'a':436.9, 'c':395.9, 'd':440.9, 'e':436.9, 'g':454.6, 'h':450, 'i':230.4,
+    'n':466.8, 'o':428.5, 'r':328.8, 's':401.8, 't':293.5, 'u':450, 'w':629.4
+  }, 0.5);
+  const AWESOME_SMALL_ADV = scaleMap({
+    ' ':191.1, '!':250, 'A':519.7, 'Y':423.3, 'a':436.9, 'c':395.9, 'd':440.9,
+    'e':436.9, 'h':450, 'i':230.4, 'j':240, 'm':688.6, 'o':428.5, 'r':328.8,
+    's':401.8, 't':293.5, 'u':450, 'w':629.4
+  }, 0.42);
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const scoreString = cm => (Math.max(0, cm) / 100).toFixed(2) + 'm';
 
@@ -122,12 +148,14 @@
     imagesReady(obj) {
       const fn = window[obj];
       if (typeof fn !== 'function') return false;
+      if (fn._imgsReady) return true;
       let ids = fn._imgIds;
       if (!ids) ids = fn._imgIds = Function.prototype.toString.call(fn).match(/imageObj\d+/g) || [];
-      for (const id of ids) {
-        const img = window[id];
+      for (let i = 0; i < ids.length; i++) {
+        const img = window[ids[i]];
         if (!img || !img.complete || !img.naturalWidth) return false;
       }
+      fn._imgsReady = true;
       return true;
     }
 
@@ -334,24 +362,12 @@
     // Drawn in text484's space, where "x2" sits, so the bolt lands in the bubble.
     lightningLabel(ctx, ctrans) {
       const col = window.tocolor(ctrans.apply([252, 197, 0, 1]));
-      // text484 is scaled by 0.5726, then the bonus by 0.05. Points below are
-      // stage pixels from the bubble center, then mapped into this space.
-      const placed = 0.572601318359375;
-      const unit = 1 / (0.05 * placed);
-      const cx = 420 / placed;
-      const cy = (662 - 154) / placed;
-      // Standard bolt, about 32px tall on the 620 stage. Thick, but still a bolt.
-      const bolt = [
-        [7.33, -16], [-12.67, 4], [-0.67, 4], [-6, 16],
-        [12.67, 0], [0.67, 0], [8.67, -16]
-      ];
       ctx.save();
       ctx.beginPath();
-      bolt.forEach(([x, y], i) => {
-        const px = cx + x * unit, py = cy + y * unit;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
+      ctx.moveTo(BOLT_PTS[0][0], BOLT_PTS[0][1]);
+      for (let i = 1; i < BOLT_PTS.length; i++) {
+        ctx.lineTo(BOLT_PTS[i][0], BOLT_PTS[i][1]);
+      }
       ctx.closePath();
       ctx.fillStyle = col;
       ctx.fill();
@@ -392,43 +408,35 @@
       const best = (onAwesome ? this.app.beatenBest : this.app.storedBest) || 0;
       if (best > 12000) {
         const size = 1.05;
-        const adv = this.scaledAdv(FONT89_ADV, size);
         const baseline = 150 + (735 * size) / 2;
         this.placedGlyphs(ctx, window.font89, col, this.layoutTracked(
-          scoreString(best), adv, size, baseline, 60, true
+          scoreString(best), FONT89_ADV_105, size, baseline, 60, true
         ));
         return;
       }
-      const size = 0.5;
-      const adv = this.scaledAdv({
-        ' ':191.1, '-':328.2, 'A':519.7, 'L':440.9, 'N':566, 'R':530.1, 'Y':423.3,
-        'a':436.9, 'c':395.9, 'd':440.9, 'e':436.9, 'g':454.6, 'h':450, 'i':230.4,
-        'n':466.8, 'o':428.5, 'r':328.8, 's':401.8, 't':293.5, 'u':450, 'w':629.4
-      }, size);
-      const baseline = 150 + (728 * size) / 2;
-      this.placedGlyphs(ctx, window.font8, col, this.layoutTracked(
-        'No Record - Your Legend Awaits', adv, size, baseline, 60, true
-      ));
+      if (!this._noRecordGlyphs) {
+        this._noRecordGlyphs = this.layoutTracked(
+          'No Record - Your Legend Awaits', NO_RECORD_ADV, 0.5, 150 + (728 * 0.5) / 2, 60, true
+        );
+      }
+      this.placedGlyphs(ctx, window.font8, col, this._noRecordGlyphs);
     }
     // End panel only (sprite189). Two lines fill the card area above the bar.
     justReached(ctx, ctrans) {
       const cm = this.app.game?.cm ?? this.app.storedBest ?? 0;
       const score = this.app.game?.finalScore || scoreString(cm);
       const cx = -280;
-      const small = 0.42;
-      const smallAdv = this.scaledAdv({
-        ' ':191.1, '!':250, 'A':519.7, 'Y':423.3, 'a':436.9, 'c':395.9, 'd':440.9,
-        'e':436.9, 'h':450, 'i':230.4, 'j':240, 'm':688.6, 'o':428.5, 'r':328.8,
-        's':401.8, 't':293.5, 'u':450, 'w':629.4
-      }, small);
+      if (!this._awesomeGlyphs) {
+        this._awesomeGlyphs = this.layoutTracked(
+          'Awesome! You just reached', AWESOME_SMALL_ADV, 0.42, -2360, cx, true
+        );
+      }
       const teal = window.tocolor(ctrans.apply([13, 83, 114, 1]));
-      this.placedGlyphs(ctx, window.font8, teal, this.layoutTracked(
-        'Awesome! You just reached', smallAdv, small, -2360, cx, true
-      ));
+      this.placedGlyphs(ctx, window.font8, teal, this._awesomeGlyphs);
       const big = 1.75;
       const magenta = window.tocolor(ctrans.apply([183, 0, 157, 1]));
       this.placedGlyphs(ctx, window.font89, magenta, this.layoutTracked(
-        score, this.scaledAdv(FONT89_ADV, big), big, -914, cx, true
+        score, FONT89_ADV_175, big, -914, cx, true
       ));
     }
     place(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, time) {
@@ -520,7 +528,7 @@
       // its clip mask (shape359) was composited at half alpha, not because of Y.
 
       if (this.drawingTile) {
-        if (['sprite510', 'sprite514', 'sprite520', 'sprite526'].includes(obj)) return;
+        if (SKIP_TILE_SPRITES.has(obj)) return;
         if (obj === 'sprite534' || obj === 'sprite536')
           return draw(obj, matrix, g && g.vy < -35 ? 1 : 0);
         // Handle bonus clickme hint - set based on turboClickedToggle and position
