@@ -456,7 +456,12 @@
       // The x1 pickup draws the same purple bubble as x2, with a bolt for the label.
       if (obj === 'sprite478') {
         const clip = a.timeline.enter(obj);
-        if (this.currentBonus) this.currentBonus.visualPath = clip.path;
+        if (this.currentBonus) {
+          this.currentBonus.visualPath = clip.path;
+          if (this.currentBonus.collected && clip.frame === 1 && !clip.playing) {
+            a.timeline.play(clip);
+          }
+        }
         try {
           if (clip.frame === 1) {
             const aa = matrix[0], bb = matrix[1], cc = matrix[2], dd = matrix[3], tx = matrix[4], ty = matrix[5];
@@ -499,6 +504,9 @@
           if (name === 'sprite478' || name === 'sprite492' || name === 'sprite498' ||
               name === 'sprite503' || name === 'sprite508') {
             this.currentBonus.visualPath = clip.path;
+            if (this.currentBonus.collected && clip.frame === 1 && !clip.playing) {
+              a.timeline.play(clip);
+            }
           }
         }
         if (fr !== undefined) {
@@ -645,7 +653,8 @@
         }
         const tile = g.tiles.get(n);
         if (!tile) continue;
-        for (const b of tile.bonuses) {
+        for (let bi = 0; bi < tile.bonuses.length; bi++) {
+          const b = tile.bonuses[bi];
           if (b.collected && this.app.now - b.collected > 560) continue;
           ctx.save();
           if (b.collected) ctx.globalAlpha *= clamp(1-(this.app.now-b.collected)/560,0,1);
@@ -653,9 +662,11 @@
           this.drawingTile = true;
           bonusMat[4] = g.bgX + b.x;
           bonusMat[5] = g.bgY - n * 445 + b.y;
+          this.app.timeline.enter('sprite509', `t${n}_${bi}`);
           try {
             this.basePlace('sprite509', canvas, ctx, bonusMat, ctrans, blend, b.type, 0, 0);
           } finally {
+            this.app.timeline.leave();
             this.drawingTile = false;
             this.currentBonus = null;
           }

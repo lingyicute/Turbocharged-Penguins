@@ -474,3 +474,56 @@ test("sprite478 shifts only the frame-1 bubble icon and sprite418 applies launch
   assert.equal(calls[0].tx, 0, "burst frames use unshifted sprite478 coordinates");
   assert.equal(calls[0].fr, 1);
 });
+
+test("bonus timelines stay isolated per tile pickup and start burst when collected before first render", () => {
+  const canvas = {width: 620, height: 360, getBoundingClientRect: () => ({width: 620, height: 360}), getContext: () => ({save() {}, restore() {}, globalAlpha: 1})};
+  const window = {
+    sprite478: function() { var frame_cnt = 13; },
+    sprite488: function() { var frame_cnt = 13; },
+    sprite509(ctx, ctrans, frame) {
+      window.place("sprite478", canvas, ctx, [1, 0, 0, 1, 0, 0], ctrans, 1, 0, 0, 0);
+    },
+    sprite537() {},
+    place(name, c, ctx, mat, ct, bl, fr) {
+      if (window[name]) window[name](ctx, ct, fr, 0, 0);
+    },
+    addEventListener() {}
+  };
+  const context = vm.createContext({window, document: {getElementById: () => canvas}});
+  loadSource(context, "timeline.js");
+  loadSource(context, "renderer.js");
+  const b0 = {x: 100, y: 100, type: 1, collected: 1000};
+  const b1 = {x: 200, y: 200, type: 1, collected: 0};
+  const app = {
+    rootFrame: 115, mode: "playing", now: 1100, storedBest: 0, audio: {muted: false},
+    game: {bgX: 0, bgY: 4 * 445, vy: -10, tiles: new Map([[4, {bonuses: [b0, b1]}]])}
+  };
+  app.timeline = new window.ClipTimelines(app);
+  const renderer = new window.OriginalArtRenderer(app);
+
+  // Render 1: b0 was collected before its first render; its clip should start playing
+  app.timeline.begin();
+  app.timeline.enter("sprite538");
+  renderer.drawTiles(canvas, canvas.getContext("2d"), {}, 1);
+  app.timeline.leave();
+  app.timeline.end();
+
+  const clip0 = app.timeline.lookup(b0.visualPath);
+  const clip1 = app.timeline.lookup(b1.visualPath);
+  assert.notEqual(b0.visualPath, b1.visualPath);
+  assert.equal(clip0.playing, true, "pre-collected bonus starts burst animation on first render");
+  assert.equal(clip1.playing, false, "uncollected bonus stays held on icon frame 1");
+
+  // Simulate b0 finishing its burst (frame 13) and then fading out (>560ms)
+  clip0.frame = 13;
+  clip0.playing = false;
+  app.now = 1700;
+  app.timeline.begin();
+  app.timeline.enter("sprite538");
+  renderer.drawTiles(canvas, canvas.getContext("2d"), {}, 1);
+  app.timeline.leave();
+  app.timeline.end();
+
+  const clip1After = app.timeline.lookup(b1.visualPath);
+  assert.equal(clip1After.frame, 1, "remaining uncollected bonus does not inherit faded sibling frame 13");
+});
