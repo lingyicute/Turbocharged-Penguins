@@ -267,7 +267,7 @@
         play(g, PATH.pointer, null, true);
       }
       const best = window.TurboPenguins?.storedBest ?? 0;
-      if (g.cm > best && !g.bestToggle) {
+      if (best > 0 && g.cm > best && !g.bestToggle) {
         g.bestToggle = true;
         play(g, PATH.best, 2, true);
       } else if (best > 0 && g.cm < best && g.bestToggle) {

@@ -92,3 +92,42 @@ test('keys pressed with Ctrl, Meta or Alt are left to the browser', async () => 
   documentEvents.keydown(key('Space'));
   assert.equal(app.game.turbos, 0);
 });
+
+test("cancelling a penguin charge resets hover state and thank-you panel ignores repeat submit", async () => {
+  const {app, canvasEvents} = await createApp();
+  const clip1 = {path: "p1", frame: 1, playing: false};
+  app.timeline.penguins = new Map([["p1", clip1]]);
+  app.timeline.clips.set("p1", clip1);
+  app.timeline.lookup = path => app.timeline.clips.get(path);
+  app.timeline.goto = (c, f, p) => { c.frame = f; c.playing = p; };
+  app.mode = "select";
+
+  canvasEvents.pointermove(pointer(220, 260));
+  assert.equal(app.hovered, 1);
+  assert.equal(clip1.frame, 2);
+
+  canvasEvents.pointerdown(pointer(220, 260));
+  assert.equal(app.charging, 1);
+  assert.equal(clip1.frame, 19);
+
+  // Release outside the penguin to cancel charge, then move back over penguin 1
+  canvasEvents.pointerup(pointer(50, 50));
+  assert.equal(app.charging, 0);
+  assert.equal(app.hovered, 0);
+  assert.equal(clip1.frame, 8);
+
+  clip1.playing = false;
+  canvasEvents.pointermove(pointer(220, 260));
+  assert.equal(app.hovered, 1);
+  assert.equal(clip1.frame, 2, "hover animation replays after cancelled charge");
+
+  // Thank-you confirmation frame (140) has no submit button
+  app.mode = "result";
+  app.panelFrame = 103;
+  app.submitScore();
+  assert.equal(app.panelFrame, 140);
+  app.transitionTick = 50;
+  assert.equal(app.hitArea(300, 210), null);
+  app.submitScore();
+  assert.equal(app.transitionTick, 50, "repeat submit on frame 140 does not reset timer");
+});

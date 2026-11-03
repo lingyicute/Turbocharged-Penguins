@@ -646,7 +646,7 @@
         }
         const best = this.app.storedBest;
         const minScore = (n-1)*445 + 500;
-        if (best > 12000 && best > minScore && best < minScore+445) {
+        if (best > 12000 && best >= minScore && best < minScore+445) {
           const markerY = 445-(best-minScore);
           this._markerMat[4] = g.bgX + 39;
           this._markerMat[5] = g.bgY - n * 445 + markerY;
