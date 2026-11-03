@@ -55,3 +55,17 @@ test('all 38 floe frames traverse mask and content without full-stage scratch ca
  for(let frame=0;frame<38;frame++){scope.sprite379(ctx,cx,frame,0,0);assert.equal(stack,0);}
  assert.equal(clips,38);assert.equal(masks,38);
 });
+
+test("imagesReady caches completion on shape function once all referenced images are loaded", () => {
+  const {r, window} = renderer();
+  let completeReads = 0;
+  window.imageObj1 = {
+    get complete() { completeReads++; return true; },
+    naturalWidth: 16
+  };
+  window.shapeWithImg = function() { return imageObj1; };
+  assert.equal(r.imagesReady("shapeWithImg"), true);
+  assert.equal(completeReads, 1);
+  assert.equal(r.imagesReady("shapeWithImg"), true);
+  assert.equal(completeReads, 1, "subsequent checks use cached _imgsReady flag");
+});

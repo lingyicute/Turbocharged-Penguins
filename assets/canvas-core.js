@@ -291,8 +291,10 @@ Filters.OUTER = 3;
 
 Filters._setRGB = function (ctx, x, y, width, height, data) {
     var id = ctx.createImageData(width, height);
-    for (var i = 0; i < data.length; i++) {
-        id.data[i] = data[i];
+    if (id.data.set) {
+        id.data.set(data);
+    } else {
+        for (var i = 0; i < data.length; i++) id.data[i] = data[i];
     }
     ctx.putImageData(id, x, y);
 };
@@ -409,7 +411,6 @@ Filters.dropShadow = function (canvas, src, blurX, blurY, angle, distance, color
     }
     shadow = retCanvas.getContext("2d").getImageData(0, 0, width, height).data;
 
-    var srcPixels = src.getImageData(0, 0, width, height).data;
     for (var i = 0; i < shadow.length; i += 4) {
         var mask = srcPixels[i + 3];
         if (!inner) {
@@ -1486,18 +1487,7 @@ function parsePathString(p) {
     var parts = p.split(" ");
     var len = parts.length;
     var ops = [];
-    var rawCoords = [];
-    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    var count = 0;
     var drawCommand = "";
-
-    function addPt(x, y) {
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-        count++;
-    }
 
     for (var i = 0; i < len; i++) {
         var tok = parts[i];
@@ -1508,39 +1498,22 @@ function parsePathString(p) {
                 drawCommand = tok;
                 break;
             case 'Z':
-                // Both consumers need the close: the fill branch reads ops,
-                // the stroked replay reads rawCoords. Omitting it from
-                // rawCoords would silently drop closePath from stroked paths.
                 ops.push(0);
-                rawCoords.push(0);
                 break;
             default:
                 switch (drawCommand) {
-                    case 'L': {
-                        var x = +tok, y = +parts[i + 1];
-                        ops.push(1, x, y);
-                        addPt(x, y);
-                        rawCoords.push(1, x, y);
+                    case 'L':
+                        ops.push(1, +tok, +parts[i + 1]);
                         i++;
                         break;
-                    }
-                    case 'M': {
-                        var x = +tok, y = +parts[i + 1];
-                        ops.push(2, x, y);
-                        addPt(x, y);
-                        rawCoords.push(2, x, y);
+                    case 'M':
+                        ops.push(2, +tok, +parts[i + 1]);
                         i++;
                         break;
-                    }
-                    case 'Q': {
-                        var cx = +tok, cy = +parts[i + 1], x = +parts[i + 2], y = +parts[i + 3];
-                        ops.push(3, cx, cy, x, y);
-                        addPt(cx, cy);
-                        addPt(x, y);
-                        rawCoords.push(3, cx, cy, x, y);
+                    case 'Q':
+                        ops.push(3, +tok, +parts[i + 1], +parts[i + 2], +parts[i + 3]);
                         i += 3;
                         break;
-                    }
                 }
                 break;
         }
@@ -1548,12 +1521,7 @@ function parsePathString(p) {
 
     cached = {
         ops: ops,
-        rawCoords: rawCoords,
-        minX: minX,
-        minY: minY,
-        maxX: maxX,
-        maxY: maxY,
-        count: count
+        rawCoords: ops
     };
     _parsedPathCache.set(p, cached);
     return cached;
@@ -1778,22 +1746,37 @@ function layoutGlyphs(phrase, advances, size, y, anchor, centered) {
     return glyphs;
 }
 function drawRightGlyphs(ctx, font, color, phrase, fu, size, right, baseline) {
-    var adv = scaleAdvances(fu, size);
-    var width = 0, i, ch, x, glyphs = [];
+    var width = 0, i, ch, x;
     for (i = 0; i < phrase.length; i++) {
         ch = phrase.charAt(i);
-        if (!Object.prototype.hasOwnProperty.call(adv, ch)) continue;
-        width += adv[ch];
+        if (!Object.prototype.hasOwnProperty.call(fu, ch)) continue;
+        width += fu[ch] * size;
     }
     x = right - width;
     for (i = 0; i < phrase.length; i++) {
         ch = phrase.charAt(i);
-        if (!Object.prototype.hasOwnProperty.call(adv, ch)) continue;
-        glyphs.push([ch, size, x, baseline]);
-        x += adv[ch];
+        if (!Object.prototype.hasOwnProperty.call(fu, ch)) continue;
+        ctx.save();
+        ctx.transform(size, 0, 0, size, x, baseline);
+        font(ctx, ch, color);
+        ctx.restore();
+        x += fu[ch] * size;
     }
-    drawPlacedGlyphs(ctx, font, color, glyphs);
 }
 function drawCenterGlyphs(ctx, font, color, phrase, fu, size, anchor, baseline) {
-    drawPlacedGlyphs(ctx, font, color, layoutGlyphs(phrase, scaleAdvances(fu, size), size, baseline, anchor, true));
+    var width = 0, i, ch, step, x;
+    for (i = 0; i < phrase.length; i++) {
+        step = fu[phrase.charAt(i)];
+        width += (step == null || step !== step) ? 0 : step * size;
+    }
+    x = anchor - width / 2;
+    for (i = 0; i < phrase.length; i++) {
+        ch = phrase.charAt(i);
+        ctx.save();
+        ctx.transform(size, 0, 0, size, x, baseline);
+        font(ctx, ch, color);
+        ctx.restore();
+        step = fu[ch];
+        x += (step == null || step !== step) ? 0 : step * size;
+    }
 }
