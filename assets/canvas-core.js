@@ -985,6 +985,8 @@ cxform.prototype.applyToImage = function (fimg) {
 };
 
 cxform.prototype.merge = function (cx) {
+    if (this._empty) return cx;
+    if (!cx || cx._empty) return this;
     return new cxform(
         this.r_add + cx.r_add,
         this.g_add + cx.g_add,
