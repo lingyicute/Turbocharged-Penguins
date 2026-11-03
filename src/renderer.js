@@ -225,7 +225,7 @@
     // a cached bitmap's transparent pad would erase mask pixels.
     tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio) {
       if (!ctx || this.rasterizing || ctx._floeMaskPathOnly) return false;
-      if (!obj || (!obj.startsWith('shape') && !obj.startsWith('image') && !obj.startsWith('morphshape')))
+      if (!obj || (!obj.startsWith('shape') && !obj.startsWith('image')))
         return false;
       if (blend > 1) return false;
       if (!ctx || ctx.globalCompositeOperation !== 'source-over') return false;
@@ -240,7 +240,7 @@
       // Exported shape/image functions do not read frame, ratio or time.
       // Placement ratios change each intro tick; including them duplicated
       // identical bitmaps and evicted useful entries during the first seconds.
-      if (!obj.startsWith('morphshape')) { frame = 0; ratio = 0; }
+      frame = 0; ratio = 0;
       const ratioKey = ratio == null ? 0 : Math.round(ratio * 1000) / 1000;
       const scaleKey = Math.round(scale * 1000) / 1000;
       const key = obj + '|' + (frame ?? 0) + '|' + ratioKey + '|' + this.cxKey(ctrans) + '|' + scaleKey;
