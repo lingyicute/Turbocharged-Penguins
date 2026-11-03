@@ -353,15 +353,15 @@ Filters._setRGB = function (ctx, x, y, width, height, data) {
 };
 
 Filters.gradientGlow = function (srcCanvas, src, blurX, blurY, angle, distance, colors, ratios, type, iterations, strength, knockout) {
-    var width = canvas.width;
-    var height = canvas.height;
+    var width = srcCanvas.width;
+    var height = srcCanvas.height;
     var retCanvas = createCanvas(width, height);
     var retImg = retCanvas.getContext("2d");
 
     var gradCanvas = createCanvas(256, 1);
 
     var gradient = gradCanvas.getContext("2d");
-    var grd = ctx.createLinearGradient(0, 0, 255, 0);
+    var grd = gradient.createLinearGradient(0, 0, 255, 0);
     for (var s = 0; s < colors.length; s++) {
         var v = "rgba(" + colors[s][0] + "," + colors[s][1] + "," + colors[s][2] + "," + colors[s][3] + ")";
         grd.addColorStop(ratios[s], v);
@@ -500,7 +500,7 @@ Filters.gradientBevel = function (canvas, src, colors, ratios, blurX, blurY, str
     var gradient = createCanvas(512, 1);
     var gg = gradient.getContext("2d");
 
-    var grd = ctx.createLinearGradient(0, 0, 511, 0);
+    var grd = gg.createLinearGradient(0, 0, 511, 0);
     for (var s = 0; s < colors.length; s++) {
         var v = "rgba(" + colors[s][0] + "," + colors[s][1] + "," + colors[s][2] + "," + colors[s][3] + ")";
         grd.addColorStop(ratios[s], v);
@@ -589,7 +589,7 @@ Filters.gradientBevel = function (canvas, src, colors, ratios, blurX, blurY, str
     for (var i = 0; i < srcPixels.length; i += 4) {
         var ah = ret[i] * strength;
         var as = ret[i + 2] * strength;
-        var ra = Filters._cut(ah - as, -255, 255);
+        var ra = Filters._cut(Math.round(ah - as), -255, 255);
         ret[i] = gradientPixels[4 * (255 + ra)];
         ret[i + 1] = gradientPixels[4 * (255 + ra) + 1];
         ret[i + 2] = gradientPixels[4 * (255 + ra) + 2];
