@@ -348,7 +348,7 @@
       g.finalScore=scoreString(g.cm);
       g.turbos=0;
       this.timeline.requestPlay('root/sprite553#0', null, true);
-      if (g.cm>previous) this.saveBest(g.cm);
+      if (g.cm > 500 && g.cm > previous) this.saveBest(g.cm);
       // Root frame 117 sets panels.goto, then plays gameover (or didntclick if
       // cm==500). Both stop on the continue button; the click resumes, and the
       // next goto script jumps to tryagain / entryform / already.
@@ -424,6 +424,7 @@
     }
     chargePenguin(n) {
       if (this.mode !== 'select') return;
+      if (this.charging && this.charging !== n) this.cancelCharge();
       this.charging = n;
       const clip = this.penguinClip(n);
       if (clip) this.timeline.goto(clip, 19, true);
@@ -435,11 +436,15 @@
       const clip = this.penguinClip(this.charging);
       if (clip) this.timeline.goto(clip, 8, true);
       this.charging = 0;
+      this.hovered = 0;
     }
     choosePenguin(n) {
       if (this.mode!=='select') return;
       this.selected=clamp(n,1,3);
+      if (this.charging && this.charging !== this.selected) this.cancelCharge();
       this.charging = 0;
+      this.hovered = 0;
+      this.pressed = null;
       this.mode='launching';
       this.transitionTick=0;
       this.launchReady=false;
@@ -484,7 +489,7 @@
       this.setFrame(128);
     }
     submitScore() {
-      if (this.mode!=='result') return;
+      if (this.mode!=='result' || this.panelFrame===140) return;
       this.audio.effect(96,0.55);
       this.panelFrame=140;
       this.transitionTick=0;
@@ -537,7 +542,6 @@
         if (this.panelFrame===151 && Math.hypot(x-310,y-218)<58) return 'restart';
         if (this.panelFrame===160 && Math.hypot(x-310,y-218)<58) return 'restart';
         if (this.panelFrame===72 && x>170 && x<455 && y>192 && y<243) return 'submit';
-        if (this.panelFrame===140 && x>170 && x<455 && y>192 && y<243) return 'submit';
         // New-record footer used to be Back to game | Submit. Only Submit remains.
         if (this.panelFrame===103 && x>140 && x<500 && y>224 && y<271) return 'submit';
         if (this.panelFrame===179 && x>170 && x<455 && y>192 && y<243) return 'submit';
@@ -602,6 +606,11 @@
         this.cancelCharge();
       });
       document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          this.pressed = null;
+          this.cancelCharge();
+          this.lastTime = 0;
+        }
         if (this.audio.setHidden) this.audio.setHidden(document.hidden);
       });
       document.addEventListener('keydown', e => {
