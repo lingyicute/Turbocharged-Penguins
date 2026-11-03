@@ -5,7 +5,7 @@
 <p align="center">
   <img src="screenshot.webp" alt="Turbocharged Penguins" width="420">
 </p>
-<h3 align="center">Turbocharged Penguins – Revived in Pure JavaScript！</h1>
+<h3 align="center">Turbocharged Penguins – Revived in Pure JavaScript！</h3>
 <p align="center">Made with ❤️ by <a href="https://github.com/lingyicute">lingyicute</a></p>
 <br>
 <br>
@@ -70,7 +70,7 @@ Reads `dev.html` plus `src/` and `assets/`, embeds all audio as `data:` URIs, an
 ## Tests
 
 ```bash
-node --test tests/        # 17 unit tests, no dependencies
+node --test               # unit tests, no dependencies
 ```
 
 Optional Playwright harnesses (compare against an unmodified checkout):
