@@ -52,6 +52,11 @@
   // bitmap only adds an allocation and pushes other entries out of the budget.
   const SIMPLE_FILL_POINTS = 8;
   const SIMPLE_FILL_PIXELS = 250000;
+  // Raster cache limits. Memory is bounded by the pixel budget; the entry cap
+  // only bounds bookkeeping. At 140 entries the many small penguin/bonus
+  // bitmaps evicted each other and were re-rasterized every few seconds.
+  const MAX_RASTERS = 1024;
+  const MAX_RASTER_PIXELS = 2e7;
 
   class OriginalArtRenderer {
     constructor(app) {
@@ -310,13 +315,13 @@
         const ch = Math.ceil(h * scale);
         // Tall cliff art is a thin strip, so the limit is area, not the long side.
         if (cw < 1 || ch < 1 || cw > 8192 || ch > 8192 || cw * ch > 1200000) return false;
-        while (this.rasters.size > 140 || this.rasterPixels + cw * ch > 2e7) {
+        while (this.rasters.size > MAX_RASTERS || this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) {
           const oldest = this.leastRecentlyUsed();
           if (oldest === undefined) break;
           this.rasterPixels -= this.rasters.get(oldest).px;
           this.rasters.delete(oldest);
         }
-        if (this.rasterPixels + cw * ch > 2e7) return false;
+        if (this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) return false;
         let c;
         try {
           c = document.createElement('canvas');

@@ -157,14 +157,14 @@ test("eviction drops the raster blitted longest ago, not the earliest inserted",
   const t = churnRenderer();
   const {r} = t;
   r.renderSeq = 9;
-  for (let i = 0; i < 141; i++) r.rasters.set('k' + i, {c: {}, px: 1, seq: i === 70 ? 1 : 9});
-  r.rasterPixels = 141;
+  for (let i = 0; i < 1025; i++) r.rasters.set('k' + i, {c: {}, px: 1, seq: i === 70 ? 1 : 9});
+  r.rasterPixels = 1025;
   assert.equal(r.leastRecentlyUsed(), 'k70');
   assert.equal(t.blit(1), true);
   assert.equal(r.rasters.has('k70'), false, "the stalest entry was evicted");
   assert.equal(r.rasters.has('k0'), true, "insertion order alone no longer decides");
-  assert.equal(r.rasters.size, 141);
-  assert.ok(r.rasterPixels >= 140, "evicted pixels are subtracted, the new raster is added");
+  assert.equal(r.rasters.size, 1025);
+  assert.ok(r.rasterPixels >= 1024, "evicted pixels are subtracted, the new raster is added");
 });
 
 test("cache hits stamp the current render instead of reordering the map", () => {
@@ -215,4 +215,30 @@ test("large fills with few path points are drawn directly, detailed ones stay ca
   window.shapeSmall = () => {};
   assert.equal(r.tryBlit("shapeSmall", ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0), true);
   assert.equal(r.rasters.size, 2);
+});
+
+test("raster cache evicts by pixel budget, not by a small entry count", () => {
+  const octx = {setTransform() {}};
+  const window = {enhanceContext: c => c};
+  const document = {createElement: () => ({getContext: () => octx})};
+  vm.runInNewContext(source("src/renderer.js"), {window, document});
+  const r = Object.create(window.OriginalArtRenderer.prototype);
+  r.cullEnabled = false; r.strokes = () => false; r.imagesReady = () => true;
+  r.getDeviceScale = () => 1; r.cxKey = () => 0;
+  r.localBounds = () => ({minX: 0, minY: 0, maxX: 10, maxY: 10, n: 20, pad: 0, padConst: 0});
+  r.rasters = new Map(); r.rasterPixels = 0;
+  for (let i = 0; i < 300; i++) r.rasters.set("old" + i, {px: 100});
+  r.rasterPixels = 300 * 100;
+  window.shapeNew = () => {};
+  const ctx = {globalCompositeOperation: "source-over", save() {}, restore() {}, transform() {}, drawImage() {}};
+  assert.equal(r.tryBlit("shapeNew", ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0), true);
+  assert.equal(r.rasters.size, 301, "small entries are kept while the pixel budget has room");
+  assert.ok(r.rasters.has("old0"));
+  // Once the pixel budget is full, the least recently used entry goes first.
+  r.rasterPixels = 2e7 - 1;
+  r.rasters.get("old0").px = 1;
+  window.shapeNext = () => {};
+  assert.equal(r.tryBlit("shapeNext", ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0), true);
+  assert.ok(!r.rasters.has("old0"));
+  assert.ok(r.rasterPixels <= 2e7);
 });
