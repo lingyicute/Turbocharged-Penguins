@@ -51,9 +51,23 @@
   const STANDING_4 = Object.freeze(['p2', 'p1']);
   const STANDING_DEFAULT = Object.freeze(['p3', 'p2', 'p1']);
 
+  // Placement names come from a small fixed set, so parse each id once.
+  const SPRITE_IDS = new Map();
+  const spriteId = name => {
+    let id = SPRITE_IDS.get(name);
+    if (id === undefined) {
+      id = name.startsWith('sprite') ? Number(name.slice(6)) : 0;
+      SPRITE_IDS.set(name, id);
+    }
+    return id;
+  };
+
   class ClipTimelines {
     constructor(app) {
       this.app = app;
+      // Owner of the root level's child-path cache (see enter()).
+      this.rootClip = {kids: null};
+      this.visitSeq = 0;
       this.clips = new Map();
       this.lengths = new Map();
       this.byId = new Map();
@@ -65,7 +79,8 @@
     }
 
     length(id) {
-      if (this.lengths.has(id)) return this.lengths.get(id);
+      const known = this.lengths.get(id);
+      if (known !== undefined) return known;
       const fn = window['sprite' + id];
       const match = fn && /frame_cnt\s*=\s*(\d+)/.exec(Function.prototype.toString.call(fn));
       const count = match ? Number(match[1]) : 1;
@@ -78,15 +93,14 @@
       this.stackIndex = 0;
       let root = this.stack[0];
       if (!root) {
-        this.stack[0] = {path: 'root', id: 0, frame: this.app.rootFrame, counts: Object.create(null)};
+        this.stack[0] = root = {path: 'root', id: 0, frame: this.app.rootFrame, token: 0, clip: this.rootClip};
       } else {
         root.path = 'root';
         root.id = 0;
         root.frame = this.app.rootFrame;
-        // Allocate a fresh null-proto object instead of enumerating+deleting
-        // every key from the previous sibling counts.
-        root.counts = Object.create(null);
+        root.clip = this.rootClip;
       }
+      root.token = ++this.visitSeq;
     }
 
     end() {
@@ -107,9 +121,18 @@
 
     enter(name, customId) {
       const parent = this.parent();
-      const ordinal = parent.counts[name] || 0;
-      parent.counts[name] = ordinal + 1;
-      const id = name.startsWith('sprite') ? Number(name.slice(6)) : 0;
+      // enter() runs for every placed sprite on every render. Per-name sibling
+      // ordinals and child path strings live on the parent clip, so a visit
+      // allocates no counts object and rebuilds no path string. A slot's
+      // ordinal restarts whenever its token differs from the parent's current
+      // visit token, which is renewed on every enter of the parent.
+      const owner = parent.clip;
+      const kids = owner.kids || (owner.kids = new Map());
+      let slot = kids.get(name);
+      if (slot === undefined) kids.set(name, slot = {token: 0, next: 0, paths: []});
+      if (slot.token !== parent.token) { slot.token = parent.token; slot.next = 0; }
+      const ordinal = slot.next++;
+      const id = spriteId(name);
       let identity = customId !== undefined ? customId : ordinal;
       if (customId === undefined && parent.id === 379 && id === 372) {
         identity = SHOTS[parent.frame]?.[ordinal] || ordinal;
@@ -117,7 +140,13 @@
         const standing = parent.frame === 4 ? STANDING_4 : STANDING_DEFAULT;
         identity = standing[ordinal] || ordinal;
       }
-      const path = parent.path + '/' + name + '#' + identity;
+      let path;
+      if (typeof identity === 'number' && identity < 64) {
+        path = slot.paths[identity];
+        if (path === undefined) path = slot.paths[identity] = parent.path + '/' + name + '#' + identity;
+      } else {
+        path = parent.path + '/' + name + '#' + identity;
+      }
       const length = id ? this.length(id) : 1;
       let clip = this.clips.get(path);
       if (clip && id === 25 && clip.parentFrame !== parent.frame) {
@@ -140,15 +169,14 @@
       this.stackIndex++;
       let entry = this.stack[this.stackIndex];
       if (!entry) {
-        this.stack[this.stackIndex] = {path, id, frame: clip.frame, counts: Object.create(null)};
+        this.stack[this.stackIndex] = entry = {path, id, frame: clip.frame, token: 0, clip};
       } else {
         entry.path = path;
         entry.id = id;
         entry.frame = clip.frame;
-        // Fresh null-proto counts; faster than enumerating and deleting every
-        // previous child-name key.
-        entry.counts = Object.create(null);
+        entry.clip = clip;
       }
+      entry.token = ++this.visitSeq;
       return clip;
     }
 
