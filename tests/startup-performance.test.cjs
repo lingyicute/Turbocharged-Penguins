@@ -114,3 +114,41 @@ test("zero-alpha leaf shapes and texts are skipped before tryBlit or basePlace",
   assert.equal(blits, 1);
   assert.equal(baseCalls, 1);
 });
+
+function churnRenderer() {
+  let canvases = 0;
+  const document = {createElement: () => { canvases++; return {width: 0, height: 0, getContext: () => ({setTransform() {}})}; }};
+  const window = {enhanceContext: c => c};
+  vm.runInNewContext(source("src/renderer.js"), {window, document});
+  const r = Object.create(window.OriginalArtRenderer.prototype);
+  r.rasters = new Map(); r.rasterPixels = 0; r.rasterizing = false; r.cullEnabled = false;
+  r.strokes = () => false; r.imagesReady = () => true; r.cxKey = () => '0';
+  r.localBounds = () => ({minX: 0, minY: 0, maxX: 10, maxY: 10, pad: 0, padConst: 0});
+  const state = {scale: 1};
+  r.getDeviceScale = () => state.scale;
+  window.shapeAnimated = () => {};
+  const ctx = {globalCompositeOperation: 'source-over', save() {}, restore() {}, transform() {}, drawImage() {}};
+  return {state, canvases: () => canvases,
+    blit: scale => { state.scale = scale; return r.tryBlit('shapeAnimated', ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0); }};
+}
+
+test("shapes whose scale animates stop minting rasters and resume once the key repeats", () => {
+  const t = churnRenderer();
+  const animated = [];
+  for (let i = 0; i < 10; i++) animated.push(t.blit(1 + i / 10));
+  assert.deepEqual(animated, [true, true, true, true, false, false, false, false, false, false]);
+  assert.equal(t.canvases(), 4, "minting stops after a few unreused rasters");
+  assert.deepEqual([t.blit(2), t.blit(2), t.blit(2)], [false, true, true], "a repeated key is cached, then hits");
+  assert.equal(t.canvases(), 5);
+  assert.equal(t.blit(3), true, "once the last raster was reused, new scales cache again");
+  assert.equal(t.canvases(), 6);
+});
+
+test("a static instance hitting every frame does not hide an animated sibling", () => {
+  const t = churnRenderer();
+  const stable = [], moving = [];
+  for (let i = 0; i < 8; i++) { stable.push(t.blit(1)); moving.push(t.blit(2 + i / 10)); }
+  assert.ok(stable.every(Boolean), "the static instance is always blitted from cache");
+  assert.deepEqual(moving, [true, true, true, false, false, false, false, false]);
+  assert.equal(t.canvases(), 4);
+});

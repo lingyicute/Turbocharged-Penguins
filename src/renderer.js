@@ -40,6 +40,11 @@
     'e':436.9, 'h':450, 'i':230.4, 'j':240, 'm':688.6, 'o':428.5, 'r':328.8,
     's':401.8, 't':293.5, 'u':450, 'w':629.4
   }, 0.42);
+  // Shapes whose scale or tint animates mint a bitmap per frame that is never
+  // reused, costing a canvas allocation, a vector redraw, a blit and sometimes
+  // a pixel readback. After this many back-to-back mints that nobody reused,
+  // a shape is drawn live until the same raster key is requested twice.
+  const CHURN_WASTE = 3;
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const scoreString = cm => (Math.max(0, cm) / 100).toFixed(2) + 'm';
 
@@ -233,7 +238,8 @@
       // Caching those clips the line, and any cached stroke blit resamples the
       // outline at fractional offsets, visibly softening it. Fills are the
       // expensive redraw.
-      if (this.strokes(obj) || window[obj]._noRaster) return false;
+      const fn = window[obj];
+      if (this.strokes(obj) || fn._noRaster) return false;
       if (!this.imagesReady(obj)) return false;
       const scale = this.getDeviceScale(ctx, matrix);
       if (!scale) return false;
@@ -252,6 +258,7 @@
         // no-ops, and skipping the blit also keeps filmstrip panels from
         // fighting the budget with entries nobody sees.
         minX = entry.minX; minY = entry.minY; w = entry.w; h = entry.h;
+        entry.used = true;
         if (this.culledOut(ctx, matrix, minX, minY, minX + w, minY + h)) return true;
         // LRU touch: Map preserves insertion order, so delete+set moves the
         // entry to the end. Eviction below drops the oldest (least recently
@@ -260,6 +267,17 @@
         // (delete is guarded because unit tests stub this.rasters.)
         if (this.rasters.delete) { this.rasters.delete(key); this.rasters.set(key, entry); }
       } else {
+        // The previous raster minted for this shape paid off only if it has
+        // been blitted again since; a static instance hitting every frame
+        // must not hide an animated sibling that mints every frame.
+        const prev = fn._rcPrev;
+        let waste = fn._rcWaste || 0;
+        if (prev !== undefined && prev.used) waste = 0;
+        if (waste >= CHURN_WASTE && fn._rcLastKey !== key) {
+          fn._rcLastKey = key;
+          fn._rcWaste = waste;
+          return false;
+        }
         const bounds = this.localBounds(obj, frame ?? 0, ratioKey, ctrans);
         if (!bounds) {
           window[obj]._noRaster = true;
@@ -321,9 +339,11 @@
             return false;
           }
         }
-        entry = { c, minX, minY, w: cw / scale, h: ch / scale, px: cw * ch };
+        entry = { c, minX, minY, w: cw / scale, h: ch / scale, px: cw * ch, used: false };
         this.rasterPixels += entry.px;
         this.rasters.set(key, entry);
+        fn._rcWaste = prev !== undefined && !prev.used ? waste + 1 : waste;
+        fn._rcPrev = entry;
       }
       ctx.save();
       ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
