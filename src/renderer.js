@@ -71,10 +71,9 @@
       this.rasters = new Map();
       this.rasterPixels = 0;
       this.rasterizing = false;
-      // Quality guardrail: blitting a cached raster at a fractional offset
-      // resamples edges instead of re-rendering the exact vector path, so
-      // optimizations that would change a single output pixel stay off.
-      this.cullEnabled = false;
+      // Cache hits whose bounds miss the stage entirely are skipped. Such a
+      // blit paints no pixel, so output is unchanged.
+      this.cullEnabled = true;
       const self = this;
       window.place = function(obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time) {
         return self.place(obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time);
@@ -265,8 +264,8 @@
       if (entry) {
         // Frustum culling on the cached padded bounds (cheap: no bounds
         // lookup on the hit path). Frustum-culled blits are pixel-identical
-        // no-ops, and skipping the blit also keeps filmstrip panels from
-        // fighting the budget with entries nobody sees.
+        // no-ops. Misses still rasterize, so tiles are warm before they
+        // scroll into view.
         minX = entry.minX; minY = entry.minY; w = entry.w; h = entry.h;
         entry.used = true;
         // LRU touch: stamp the render that blitted it. Re-inserting the key in
@@ -275,6 +274,7 @@
         // instead, which only happens when the cache is full. That keeps the
         // ever-present cliff/sky tiles hot when transient UI shapes churn the
         // cache during panel animations.
+        // Stamp before culling so tiles waiting just off-stage stay cached.
         entry.seq = this.renderSeq | 0;
         if (this.culledOut(ctx, matrix, minX, minY, minX + w, minY + h)) return true;
       } else {
@@ -309,8 +309,6 @@
           fn._noRaster = true;
           return false;
         }
-        if (this.culledOut(ctx, matrix, minX, minY, bounds.maxX + pad, bounds.maxY + pad))
-          return true;
         const cw = Math.ceil(w * scale);
         const ch = Math.ceil(h * scale);
         // Tall cliff art is a thin strip, so the limit is area, not the long side.
