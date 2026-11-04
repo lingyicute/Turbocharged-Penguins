@@ -47,6 +47,11 @@
   const CHURN_WASTE = 3;
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const scoreString = cm => (Math.max(0, cm) / 100).toFixed(2) + 'm';
+  // A fill with only a few path points and no bitmap costs the GPU one quad
+  // whether it is drawn or blitted, so a large one is not worth caching: the
+  // bitmap only adds an allocation and pushes other entries out of the budget.
+  const SIMPLE_FILL_POINTS = 8;
+  const SIMPLE_FILL_PIXELS = 250000;
 
   class OriginalArtRenderer {
     constructor(app) {
@@ -290,6 +295,15 @@
         w = bounds.maxX - bounds.minX + pad * 2;
         h = bounds.maxY - bounds.minY + pad * 2;
         if (!(w > 0 && h > 0)) return false;
+        // The sky gradient (shape431) is one rectangle whose colour transform
+        // steps with the fader while climbing. Each step used to rasterize a
+        // stage-sized bitmap and evict most of the cache, which then had to
+        // be rebuilt. Draw such fills directly.
+        if (bounds.n <= SIMPLE_FILL_POINTS && !(fn._imgIds && fn._imgIds.length) &&
+            w * h * scale * scale > SIMPLE_FILL_PIXELS) {
+          fn._noRaster = true;
+          return false;
+        }
         if (this.culledOut(ctx, matrix, minX, minY, bounds.maxX + pad, bounds.maxY + pad))
           return true;
         const cw = Math.ceil(w * scale);

@@ -181,3 +181,38 @@ test("cache hits stamp the current render instead of reordering the map", () => 
   assert.deepEqual(reorder, []);
   assert.equal([...r.rasters.values()][0].seq, 7);
 });
+
+test("large fills with few path points are drawn directly, detailed ones stay cached", () => {
+  const made = [];
+  const octx = {setTransform() {}};
+  const window = {enhanceContext: c => c};
+  const document = {createElement: () => { const c = {getContext: () => octx}; made.push(c); return c; }};
+  vm.runInNewContext(source("src/renderer.js"), {window, document});
+  const r = Object.create(window.OriginalArtRenderer.prototype);
+  r.rasters = new Map(); r.rasterPixels = 0; r.cullEnabled = false;
+  r.strokes = () => false; r.imagesReady = () => true; r.getDeviceScale = () => 0.1; r.cxKey = () => 0;
+  let points = 5;
+  r.localBounds = () => ({minX: -6200, minY: -3600, maxX: 6200, maxY: 3600, n: points, pad: 0, padConst: 0});
+  window.shapeSky = () => {};
+  const drawn = [];
+  const ctx = {
+    globalCompositeOperation: "source-over",
+    save() {}, restore() {}, transform() {}, drawImage() { drawn.push(1); }
+  };
+  assert.equal(r.tryBlit("shapeSky", ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0), false);
+  assert.equal(window.shapeSky._noRaster, true);
+  assert.equal(made.length, 0, "no bitmap is allocated for a trivial full-stage fill");
+  assert.equal(r.rasters.size, 0);
+  // Same area but a detailed path still goes through the cache.
+  points = 40;
+  window.shapeDetail = () => {};
+  assert.equal(r.tryBlit("shapeDetail", ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0), true);
+  assert.equal(r.rasters.size, 1);
+  assert.equal(drawn.length, 1);
+  // A small simple shape is cheap to keep, so it is cached too.
+  points = 5;
+  r.localBounds = () => ({minX: 0, minY: 0, maxX: 100, maxY: 100, n: 5, pad: 0, padConst: 0});
+  window.shapeSmall = () => {};
+  assert.equal(r.tryBlit("shapeSmall", ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0), true);
+  assert.equal(r.rasters.size, 2);
+});
