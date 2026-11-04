@@ -242,3 +242,27 @@ test("raster cache evicts by pixel budget, not by a small entry count", () => {
   assert.ok(!r.rasters.has("old0"));
   assert.ok(r.rasterPixels <= 2e7);
 });
+
+test("cache hits wholly outside the stage are skipped but stay recently used", () => {
+  const {r, window} = renderer();
+  r.cullEnabled = true; r.strokes = () => false; r.imagesReady = () => true;
+  r.getDeviceScale = () => 1; r.cxKey = () => 0; r.renderSeq = 5;
+  const key = "shapeA|0|0|0|1";
+  r.rasters = new Map([[key, {c: {}, minX: -5, minY: -5, w: 10, h: 10, px: 100, seq: 1}], ["other", {px: 1, seq: 2}]]);
+  window.shapeA = () => {};
+  let draws = 0;
+  const ctx = {
+    globalCompositeOperation: "source-over", canvas: {width: 620, height: 360},
+    _matrix: [1, 0, 0, 1, 0, 0], save() {}, restore() {}, transform() {}, drawImage() { draws++; }
+  };
+  const blit = (x, y) => r.tryBlit("shapeA", ctx, [1, 0, 0, 1, x, y], {}, 1, 0, 0);
+  for (const [x, y] of [[700, 100], [-50, 100], [100, -50], [100, 400]]) {
+    assert.equal(blit(x, y), true);
+  }
+  assert.equal(draws, 0, "off-stage blits paint nothing");
+  assert.equal(r.rasters.get(key).seq, 5, "culled hits still refresh the LRU stamp");
+  assert.equal(r.leastRecentlyUsed(), "other");
+  assert.equal(blit(0, 0), true, "a blit touching the corner is still drawn");
+  assert.equal(blit(300, 200), true);
+  assert.equal(draws, 2);
+});
