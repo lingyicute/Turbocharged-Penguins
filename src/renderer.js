@@ -259,13 +259,14 @@
         // fighting the budget with entries nobody sees.
         minX = entry.minX; minY = entry.minY; w = entry.w; h = entry.h;
         entry.used = true;
+        // LRU touch: stamp the render that blitted it. Re-inserting the key in
+        // the Map on every hit (hundreds per frame) leaves tombstones and
+        // forces periodic table rehashes; eviction scans for the stalest stamp
+        // instead, which only happens when the cache is full. That keeps the
+        // ever-present cliff/sky tiles hot when transient UI shapes churn the
+        // cache during panel animations.
+        entry.seq = this.renderSeq | 0;
         if (this.culledOut(ctx, matrix, minX, minY, minX + w, minY + h)) return true;
-        // LRU touch: Map preserves insertion order, so delete+set moves the
-        // entry to the end. Eviction below drops the oldest (least recently
-        // used) key first, keeping the ever-present cliff/sky tiles hot even
-        // when transient UI shapes churn the cache during panel animations.
-        // (delete is guarded because unit tests stub this.rasters.)
-        if (this.rasters.delete) { this.rasters.delete(key); this.rasters.set(key, entry); }
       } else {
         // The previous raster minted for this shape paid off only if it has
         // been blitted again since; a static instance hitting every frame
@@ -296,7 +297,7 @@
         // Tall cliff art is a thin strip, so the limit is area, not the long side.
         if (cw < 1 || ch < 1 || cw > 8192 || ch > 8192 || cw * ch > 1200000) return false;
         while (this.rasters.size > 140 || this.rasterPixels + cw * ch > 2e7) {
-          const oldest = this.rasters.keys().next().value;
+          const oldest = this.leastRecentlyUsed();
           if (oldest === undefined) break;
           this.rasterPixels -= this.rasters.get(oldest).px;
           this.rasters.delete(oldest);
@@ -339,7 +340,7 @@
             return false;
           }
         }
-        entry = { c, minX, minY, w: cw / scale, h: ch / scale, px: cw * ch, used: false };
+        entry = { c, minX, minY, w: cw / scale, h: ch / scale, px: cw * ch, used: false, seq: this.renderSeq | 0 };
         this.rasterPixels += entry.px;
         this.rasters.set(key, entry);
         fn._rcWaste = prev !== undefined && !prev.used ? waste + 1 : waste;
@@ -350,6 +351,16 @@
       ctx.drawImage(entry.c, entry.minX, entry.minY, entry.w, entry.h);
       ctx.restore();
       return true;
+    }
+
+    // Key of the raster blitted longest ago; the earliest inserted wins ties.
+    leastRecentlyUsed() {
+      let key, best = Infinity;
+      for (const [k, e] of this.rasters) {
+        const seq = e.seq | 0;
+        if (seq < best) { best = seq; key = k; }
+      }
+      return key;
     }
 
     // True when the device-space bounding box of [lx0,ly0]..[lx1,ly1] under
@@ -706,6 +717,7 @@
       }
     }
     render() {
+      this.renderSeq = (this.renderSeq | 0) + 1;
       if (window.beginCanvasPool) window.beginCanvasPool();
       const ctx = this.ctx;
       ctx.save();

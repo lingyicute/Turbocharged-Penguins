@@ -128,7 +128,7 @@ function churnRenderer() {
   r.getDeviceScale = () => state.scale;
   window.shapeAnimated = () => {};
   const ctx = {globalCompositeOperation: 'source-over', save() {}, restore() {}, transform() {}, drawImage() {}};
-  return {state, canvases: () => canvases,
+  return {r, state, canvases: () => canvases,
     blit: scale => { state.scale = scale; return r.tryBlit('shapeAnimated', ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0); }};
 }
 
@@ -151,4 +151,33 @@ test("a static instance hitting every frame does not hide an animated sibling", 
   assert.ok(stable.every(Boolean), "the static instance is always blitted from cache");
   assert.deepEqual(moving, [true, true, true, false, false, false, false, false]);
   assert.equal(t.canvases(), 4);
+});
+
+test("eviction drops the raster blitted longest ago, not the earliest inserted", () => {
+  const t = churnRenderer();
+  const {r} = t;
+  r.renderSeq = 9;
+  for (let i = 0; i < 141; i++) r.rasters.set('k' + i, {c: {}, px: 1, seq: i === 70 ? 1 : 9});
+  r.rasterPixels = 141;
+  assert.equal(r.leastRecentlyUsed(), 'k70');
+  assert.equal(t.blit(1), true);
+  assert.equal(r.rasters.has('k70'), false, "the stalest entry was evicted");
+  assert.equal(r.rasters.has('k0'), true, "insertion order alone no longer decides");
+  assert.equal(r.rasters.size, 141);
+  assert.ok(r.rasterPixels >= 140, "evicted pixels are subtracted, the new raster is added");
+});
+
+test("cache hits stamp the current render instead of reordering the map", () => {
+  const t = churnRenderer();
+  const {r} = t;
+  r.renderSeq = 3;
+  t.blit(1);
+  r.renderSeq = 7;
+  const reorder = [];
+  const set = r.rasters.set.bind(r.rasters), del = r.rasters.delete.bind(r.rasters);
+  r.rasters.set = (k, v) => { reorder.push('set'); return set(k, v); };
+  r.rasters.delete = k => { reorder.push('delete'); return del(k); };
+  assert.equal(t.blit(1), true);
+  assert.deepEqual(reorder, []);
+  assert.equal([...r.rasters.values()][0].seq, 7);
 });
