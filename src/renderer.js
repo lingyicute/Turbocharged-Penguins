@@ -92,10 +92,17 @@
     watchDpr() {
       if (!window.matchMedia) return;
       const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
-      mq.addEventListener('change', () => {
+      const changed = () => {
         this.handleResize();
         this.watchDpr();
-      }, { once: true });
+      };
+      // Safari before 14 only has the legacy listener API. Calling the missing
+      // addEventListener threw out of the constructor, so the game never started.
+      if (mq.addEventListener) mq.addEventListener('change', changed, { once: true });
+      else if (mq.addListener) {
+        const once = () => { mq.removeListener(once); changed(); };
+        mq.addListener(once);
+      }
     }
 
     handleResize() {
