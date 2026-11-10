@@ -69,7 +69,23 @@ var _canvasPoolUsed = 0;
 var _poolW = 0;
 var _poolH = 0;
 var _cachedGameCanvas = null;
-var beginCanvasPool = function () { _canvasPoolUsed = 0; };
+var _canvasPoolIdle = 0;
+var beginCanvasPool = function () {
+    // Only the intro masks through stage-sized canvases. Once renders stop
+    // asking for them, release the backing stores instead of holding two
+    // stage-sized bitmaps for the rest of the session.
+    if (_canvasPoolUsed >= _canvasPool.length) {
+        _canvasPoolIdle = 0;
+    } else if (++_canvasPoolIdle >= 60) {
+        for (var i = _canvasPoolUsed; i < _canvasPool.length; i++) {
+            _canvasPool[i].width = 0;
+            _canvasPool[i].height = 0;
+        }
+        _canvasPool.length = _canvasPoolUsed;
+        _canvasPoolIdle = 0;
+    }
+    _canvasPoolUsed = 0;
+};
 var createCanvas = function (width, height) {
     if (!_cachedGameCanvas || !_cachedGameCanvas.isConnected) {
         _cachedGameCanvas = typeof document !== "undefined" ? document.getElementById("game") : null;
@@ -34944,10 +34960,17 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
     watchDpr() {
       if (!window.matchMedia) return;
       const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
-      mq.addEventListener('change', () => {
+      const changed = () => {
         this.handleResize();
         this.watchDpr();
-      }, { once: true });
+      };
+      // Safari before 14 only has the legacy listener API. Calling the missing
+      // addEventListener threw out of the constructor, so the game never started.
+      if (mq.addEventListener) mq.addEventListener('change', changed, { once: true });
+      else if (mq.addListener) {
+        const once = () => { mq.removeListener(once); changed(); };
+        mq.addListener(once);
+      }
     }
 
     handleResize() {
@@ -34993,6 +35016,25 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       if (ctrans._key) return ctrans._key;
       return (ctrans._key = ctrans.r_add + ',' + ctrans.g_add + ',' + ctrans.b_add + ',' + ctrans.a_add + ',' +
         ctrans.r_mult + ',' + ctrans.g_mult + ',' + ctrans.b_mult + ',' + ctrans.a_mult);
+    }
+
+    // The transform with its alpha multiplier at unity. Placements merge a new
+    // cxform every frame, so these are shared per colour part: the raster key
+    // and tint tables cached on one are found again on later frames.
+    opaque(ctrans) {
+      let solid = ctrans._opaque;
+      if (solid !== undefined) return solid;
+      const key = ctrans.r_add + ',' + ctrans.g_add + ',' + ctrans.b_add + ',' +
+        ctrans.r_mult + ',' + ctrans.g_mult + ',' + ctrans.b_mult;
+      const shared = this.opaques || (this.opaques = new Map());
+      solid = shared.get(key);
+      if (solid === undefined) {
+        if (shared.size >= 4096) shared.clear();
+        solid = new window.cxform(ctrans.r_add, ctrans.g_add, ctrans.b_add, 0,
+          ctrans.r_mult, ctrans.g_mult, ctrans.b_mult, 255);
+        shared.set(key, solid);
+      }
+      return (ctrans._opaque = solid);
     }
 
     strokes(obj) {
@@ -35193,7 +35235,10 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         } finally {
           this.rasterizing = false;
         }
-        if (window[obj]._imgIds && window[obj]._imgIds.length) {
+        // Whether a bitmap fill paints depends on the shape's images, not on
+        // this scale or tint, and the probe is a synchronous pixel readback.
+        // One verdict per shape is enough.
+        if (!fn._painted && fn._imgIds && fn._imgIds.length) {
           try {
             const px = Math.min(16, cw), py = Math.min(16, ch);
             const sx0 = Math.max(0, (cw - px) >> 1), sy0 = Math.max(0, (ch - py) >> 1);
@@ -35204,6 +35249,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
               window[obj]._noRaster = true;
               return false;
             }
+            fn._painted = true;
           } catch (e) {
             window[obj]._noRaster = true;
             return false;
@@ -35214,6 +35260,19 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         this.rasters.set(key, entry);
         fn._rcWaste = prev !== undefined && !prev.used ? waste + 1 : waste;
         fn._rcPrev = entry;
+      }
+      // A blit changes nothing but the transform, so set it and put it back.
+      // save()/restore() copy the whole context state on every call and were
+      // the costliest canvas calls of a gameplay frame.
+      const p = ctx._matrix;
+      if (p) {
+        const p0 = p[0], p1 = p[1], p2 = p[2], p3 = p[3], p4 = p[4], p5 = p[5];
+        const m0 = matrix[0], m1 = matrix[1], m2 = matrix[2], m3 = matrix[3];
+        ctx.setTransform(p0 * m0 + p2 * m1, p1 * m0 + p3 * m1, p0 * m2 + p2 * m3, p1 * m2 + p3 * m3,
+          p0 * matrix[4] + p2 * matrix[5] + p4, p1 * matrix[4] + p3 * matrix[5] + p5);
+        ctx.drawImage(entry.c, entry.minX, entry.minY, entry.w, entry.h);
+        ctx.setTransform(p0, p1, p2, p3, p4, p5);
+        return true;
       }
       ctx.save();
       ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
@@ -35348,7 +35407,30 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       const c0 = obj.charCodeAt(0);
       if ((c0 === 115 && obj.charCodeAt(1) === 104) || c0 === 105 || c0 === 109 || c0 === 116) {
         if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0 && blend <= 1 && (!ctx || !ctx._floeMaskPathOnly)) return;
+        // An alpha multiplier scales every fill, stroke and bitmap of a leaf
+        // alike, which is what globalAlpha does. Drawing with the opaque rest
+        // of the transform lets a fade reuse one raster and one tinted bitmap;
+        // keyed by alpha, each step minted both and read pixels back.
+        if (ctx && blend <= 1 && ctrans && !ctrans._empty && ctrans.a_add === 0 &&
+            ctrans.a_mult > 0 && ctrans.a_mult !== 255) {
+          const alpha = ctrans.a_mult / 255;
+          ctrans = this.opaque(ctrans);
+          if (alpha < 1) {
+            const before = ctx.globalAlpha;
+            ctx.globalAlpha = before * alpha;
+            try {
+              if (c0 === 116 || !this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio))
+                this.basePlace(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, 0);
+            } finally {
+              ctx.globalAlpha = before;
+            }
+            return;
+          }
+        }
         if (c0 !== 116 && this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
+        // A leaf has no timeline and matches none of the sprite cases below.
+        // Returning here skips those comparisons and the draw closure.
+        return this.basePlace(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, 0);
       }
       // sprite13 is the white corner cap (shape12), placed on all four corners.
       if (obj === 'sprite13') return;
