@@ -407,6 +407,14 @@
       // the costliest canvas calls of a gameplay frame.
       const p = ctx._matrix;
       if (p) {
+        // Almost every leaf is placed with the identity matrix (a sprite
+        // wrapping one shape). The composed transform is then the current
+        // one, so there is nothing to set and nothing to put back.
+        if (matrix[0] === 1 && matrix[1] === 0 && matrix[2] === 0 && matrix[3] === 1 &&
+            matrix[4] === 0 && matrix[5] === 0) {
+          ctx.drawImage(entry.c, entry.minX, entry.minY, entry.w, entry.h);
+          return true;
+        }
         const p0 = p[0], p1 = p[1], p2 = p[2], p3 = p[3], p4 = p[4], p5 = p[5];
         const m0 = matrix[0], m1 = matrix[1], m2 = matrix[2], m3 = matrix[3];
         ctx.setTransform(p0 * m0 + p2 * m1, p1 * m0 + p3 * m1, p0 * m2 + p2 * m3, p1 * m2 + p3 * m3,
