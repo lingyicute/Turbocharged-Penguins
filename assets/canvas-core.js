@@ -1500,11 +1500,27 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
 }
 
 var _parsedPathCache = new Map();
+// The 9-slice redraw in place() builds its path strings from the current
+// matrix, so a moving panel produces a new key nearly every frame. Keep the
+// cache to two generations: when the newer one fills up, the older one is
+// dropped. Entries that are still hit get promoted back into the newer one.
+var _parsedPathCachePrev = new Map();
+var PARSED_PATH_CACHE_LIMIT = 4096;
 
 function parsePathString(p) {
     var cached = _parsedPathCache.get(p);
     if (cached) return cached;
+    cached = _parsedPathCachePrev.get(p);
+    if (!cached) cached = parsePathOps(p);
+    if (_parsedPathCache.size >= PARSED_PATH_CACHE_LIMIT) {
+        _parsedPathCachePrev = _parsedPathCache;
+        _parsedPathCache = new Map();
+    }
+    _parsedPathCache.set(p, cached);
+    return cached;
+}
 
+function parsePathOps(p) {
     var parts = p.split(" ");
     var len = parts.length;
     var ops = [];
@@ -1540,12 +1556,10 @@ function parsePathString(p) {
         }
     }
 
-    cached = {
+    return {
         ops: ops,
         rawCoords: ops
     };
-    _parsedPathCache.set(p, cached);
-    return cached;
 }
 
 function drawPath(ctx, p, doStroke, scaleMode) {
