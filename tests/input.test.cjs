@@ -21,7 +21,11 @@ async function createApp() {
   };
   const window = {
     addEventListener(event, callback) { if (event === 'load') onload = callback; },
-    GameAudio: class { constructor() { this.unlocked = true; this.muted = false; } effect() {} },
+    GameAudio: class {
+      constructor() { this.unlocked = true; this.muted = false; this.resumes = 0; }
+      effect() {}
+      resumeContext() { this.resumes++; }
+    },
     ClipTimelines: class { constructor() { this.clips = new Map(); this.byId = new Map(); } requestPlay() {} },
     OriginalArtRenderer: class {}
   };
@@ -66,6 +70,19 @@ test('a pickup is collected on pointer down, before the cliff scrolls away', asy
   canvasEvents.pointerdown(pointer(center.x, center.y));
   assert.ok(b.collected > 0);
   assert.equal(g.turbos, 1);
+});
+
+test('a pointer release resumes the audio context a touch press could not start', async () => {
+  const {app, canvasEvents} = await createApp();
+  canvasEvents.pointerdown(pointer(10, 10, {pointerType: 'touch'}));
+  assert.equal(app.audio.resumes, 0);
+  canvasEvents.pointerup(pointer(10, 10, {pointerType: 'touch'}));
+  assert.equal(app.audio.resumes, 1);
+  canvasEvents.pointerup(pointer(10, 10, {button: 2}));
+  assert.equal(app.audio.resumes, 1, 'secondary mouse buttons are still ignored');
+  app.audio.unlocked = false;
+  canvasEvents.pointerup(pointer(10, 10));
+  assert.equal(app.audio.resumes, 1, 'nothing is resumed before the game is unlocked');
 });
 
 test('secondary mouse buttons do not bounce the penguin', async () => {

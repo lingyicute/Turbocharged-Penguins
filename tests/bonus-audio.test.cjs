@@ -238,6 +238,62 @@ test('unlocking warms the one-shot buffers before the first in-game cue', async 
   }
 });
 
+test('a hide/show quicker than suspend() still resumes the context', async () => {
+  const log = [];
+  class FakeAudio {
+    constructor() { this.paused = true; }
+    play() { this.paused = false; return Promise.resolve(); }
+    pause() { this.paused = true; }
+  }
+  class FakeAudioContext {
+    constructor() { this.state = 'running'; }
+    // Like Firefox and Safari: the state changes once the promise settles.
+    suspend() { log.push('suspend'); return Promise.resolve().then(() => { this.state = 'suspended'; }); }
+    resume() { log.push('resume'); return Promise.resolve().then(() => { this.state = 'running'; }); }
+  }
+  const window = {AudioContext: FakeAudioContext};
+  const context = vm.createContext({window, Audio: FakeAudio});
+  loadSource(context, 'audio.js');
+  const audio = new window.GameAudio();
+  audio.unlocked = true;
+  audio.setHidden(true);
+  audio.setHidden(false);
+  assert.deepEqual(log, ['suspend', 'resume'], 'the still pending suspend() is followed by a resume()');
+  await nextTick();
+  assert.equal(audio.audioContext.state, 'running');
+});
+
+test('every unlock retries resume() while the context is still suspended', () => {
+  let resumes = 0, allowed = false;
+  class FakeAudio {
+    constructor() { this.paused = true; }
+    play() { this.paused = false; return Promise.resolve(); }
+    pause() { this.paused = true; }
+  }
+  class FakeAudioContext {
+    constructor() { this.state = 'suspended'; this.destination = {}; }
+    // Refused without user activation, like the resume() of a touch press.
+    resume() { resumes++; if (allowed) this.state = 'running'; return Promise.resolve(); }
+    suspend() { this.state = 'suspended'; return Promise.resolve(); }
+  }
+  const window = {AudioContext: FakeAudioContext};
+  const context = vm.createContext({window, Audio: FakeAudio, fetch: () => Promise.reject(new Error('offline'))});
+  loadSource(context, 'audio.js');
+  const audio = new window.GameAudio();
+  audio.unlock();
+  assert.equal(resumes, 1);
+  assert.equal(audio.audioContext.state, 'suspended', 'the first gesture could not start the context');
+  allowed = true;
+  audio.unlock();
+  assert.equal(resumes, 2, 'the next gesture tries again');
+  assert.equal(audio.audioContext.state, 'running');
+  audio.resumeContext();
+  assert.equal(resumes, 2, 'a running context is left alone');
+  audio.setHidden(true);
+  audio.resumeContext();
+  assert.equal(resumes, 2, 'a context suspended for a hidden page stays suspended');
+});
+
 test('steady music volume avoids redundant AudioParam writes', () => {
   const {GameAudio} = createAudio(() => Promise.reject(new Error('not used')), () => Promise.resolve());
   const audio = new GameAudio();

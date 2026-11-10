@@ -621,6 +621,9 @@
       this.canvas.addEventListener('pointerup', e => {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.preventDefault();
+        // A touch or pen press is not a user activation, its release is. Give
+        // an audio context the press could not start another chance.
+        if (this.audio.unlocked) this.audio.resumeContext();
         const p=this.stagePoint(e);this.pointer=p;window.Physics._pointerX=p.x;
         const hit=this.hitArea(p.x,p.y);
         const same=hit && hit===this.pressed;
