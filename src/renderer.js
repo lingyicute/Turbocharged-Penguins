@@ -143,6 +143,25 @@
         ctrans.r_mult + ',' + ctrans.g_mult + ',' + ctrans.b_mult + ',' + ctrans.a_mult);
     }
 
+    // The transform with its alpha multiplier at unity. Placements merge a new
+    // cxform every frame, so these are shared per colour part: the raster key
+    // and tint tables cached on one are found again on later frames.
+    opaque(ctrans) {
+      let solid = ctrans._opaque;
+      if (solid !== undefined) return solid;
+      const key = ctrans.r_add + ',' + ctrans.g_add + ',' + ctrans.b_add + ',' +
+        ctrans.r_mult + ',' + ctrans.g_mult + ',' + ctrans.b_mult;
+      const shared = this.opaques || (this.opaques = new Map());
+      solid = shared.get(key);
+      if (solid === undefined) {
+        if (shared.size >= 4096) shared.clear();
+        solid = new window.cxform(ctrans.r_add, ctrans.g_add, ctrans.b_add, 0,
+          ctrans.r_mult, ctrans.g_mult, ctrans.b_mult, 255);
+        shared.set(key, solid);
+      }
+      return (ctrans._opaque = solid);
+    }
+
     strokes(obj) {
       if (obj.startsWith('morphshape')) return true;
       const fn = window[obj];
@@ -496,6 +515,26 @@
       const c0 = obj.charCodeAt(0);
       if ((c0 === 115 && obj.charCodeAt(1) === 104) || c0 === 105 || c0 === 109 || c0 === 116) {
         if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0 && blend <= 1 && (!ctx || !ctx._floeMaskPathOnly)) return;
+        // An alpha multiplier scales every fill, stroke and bitmap of a leaf
+        // alike, which is what globalAlpha does. Drawing with the opaque rest
+        // of the transform lets a fade reuse one raster and one tinted bitmap;
+        // keyed by alpha, each step minted both and read pixels back.
+        if (ctx && blend <= 1 && ctrans && !ctrans._empty && ctrans.a_add === 0 &&
+            ctrans.a_mult > 0 && ctrans.a_mult !== 255) {
+          const alpha = ctrans.a_mult / 255;
+          ctrans = this.opaque(ctrans);
+          if (alpha < 1) {
+            const before = ctx.globalAlpha;
+            ctx.globalAlpha = before * alpha;
+            try {
+              if (c0 === 116 || !this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio))
+                this.basePlace(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, 0);
+            } finally {
+              ctx.globalAlpha = before;
+            }
+            return;
+          }
+        }
         if (c0 !== 116 && this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
         // A leaf has no timeline and matches none of the sprite cases below.
         // Returning here skips those comparisons and the draw closure.

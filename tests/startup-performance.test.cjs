@@ -281,3 +281,48 @@ test("leaf placements go straight to basePlace without reaching the sprite dispa
   assert.equal(calls.length, 4);
   assert.deepEqual(calls[0], ["shape12", "cv", "ctx", m, cx, 1, 3, 7, 0], "frame and ratio pass through, time is 0");
 });
+
+test("a leaf's alpha multiplier becomes globalAlpha and fades share one opaque transform", () => {
+  function cxform(r_add, g_add, b_add, a_add, r_mult, g_mult, b_mult, a_mult) {
+    Object.assign(this, {r_add, g_add, b_add, a_add, r_mult, g_mult, b_mult, a_mult});
+    this._empty = !r_add && !g_add && !b_add && !a_add &&
+      r_mult === 255 && g_mult === 255 && b_mult === 255 && a_mult === 255;
+  }
+  const {r} = renderer({cxform});
+  r.app = {rootFrame: 115, game: null, timeline: {enter() {}, leave() {}}};
+  const ctx = {globalAlpha: 0.5};
+  const seen = [];
+  r.tryBlit = (obj, c, m, cx) => { seen.push(["blit", cx, c.globalAlpha]); return obj === "shape2"; };
+  r.basePlace = (obj, canvas, c, m, cx) => { seen.push(["base", cx, c.globalAlpha]); if (obj === "shape9") throw Error("draw failed"); };
+  const m = [1, 0, 0, 1, 0, 0];
+  const fade = a => new cxform(0, 0, 0, 0, 256, 256, 256, a);
+  const near = (a, b) => Math.abs(a - b) < 1e-12;
+
+  r.place("shape1", {}, ctx, m, fade(51), 1, 0, 0, 0);
+  assert.deepEqual(seen.map(s => s[0]), ["blit", "base"]);
+  const solid = seen[0][1];
+  assert.deepEqual([solid.r_mult, solid.a_mult, solid.a_add], [256, 255, 0], "colour part kept, alpha at unity");
+  assert.equal(seen[1][1], solid);
+  assert.ok(near(seen[0][2], 0.1) && near(seen[1][2], 0.1), "alpha multiplies the inherited globalAlpha");
+  assert.equal(ctx.globalAlpha, 0.5, "globalAlpha is restored");
+
+  seen.length = 0;
+  r.place("shape2", {}, ctx, m, fade(102), 1, 0, 0, 0);
+  r.place("text3", {}, ctx, m, fade(204), 1, 0, 0, 0);
+  r.place("shape2", {}, ctx, m, fade(256), 1, 0, 0, 0);
+  assert.deepEqual(seen.map(s => s[0]), ["blit", "base", "blit"], "a blit ends the placement, text is never blitted");
+  assert.ok(seen.every(s => s[1] === solid), "every step of a fade shares one transform, hence one raster key");
+  assert.ok(near(seen[0][2], 0.2) && near(seen[1][2], 0.4));
+  assert.equal(seen[2][2], 0.5, "multipliers at or above unity leave globalAlpha alone");
+
+  seen.length = 0;
+  r.place("shape2", {}, ctx, m, new cxform(0, 0, 0, 0, 255, 255, 255, 128), 1, 0, 0, 0);
+  assert.equal(seen[0][1]._empty, true, "an alpha-only fade draws with the identity transform");
+  const added = new cxform(0, 0, 0, 10, 255, 255, 255, 128);
+  r.place("shape2", {}, ctx, m, added, 1, 0, 0, 0);
+  assert.equal(seen[1][1], added, "an alpha offset is not a plain multiplier and is left as is");
+  assert.equal(seen[1][2], 0.5);
+
+  assert.throws(() => r.place("shape9", {}, ctx, m, fade(51), 1, 0, 0, 0), /draw failed/);
+  assert.equal(ctx.globalAlpha, 0.5, "globalAlpha is restored when the draw throws");
+});
