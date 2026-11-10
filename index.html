@@ -1556,11 +1556,27 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
 }
 
 var _parsedPathCache = new Map();
+// The 9-slice redraw in place() builds its path strings from the current
+// matrix, so a moving panel produces a new key nearly every frame. Keep the
+// cache to two generations: when the newer one fills up, the older one is
+// dropped. Entries that are still hit get promoted back into the newer one.
+var _parsedPathCachePrev = new Map();
+var PARSED_PATH_CACHE_LIMIT = 4096;
 
 function parsePathString(p) {
     var cached = _parsedPathCache.get(p);
     if (cached) return cached;
+    cached = _parsedPathCachePrev.get(p);
+    if (!cached) cached = parsePathOps(p);
+    if (_parsedPathCache.size >= PARSED_PATH_CACHE_LIMIT) {
+        _parsedPathCachePrev = _parsedPathCache;
+        _parsedPathCache = new Map();
+    }
+    _parsedPathCache.set(p, cached);
+    return cached;
+}
 
+function parsePathOps(p) {
     var parts = p.split(" ");
     var len = parts.length;
     var ops = [];
@@ -1596,12 +1612,10 @@ function parsePathString(p) {
         }
     }
 
-    cached = {
+    return {
         ops: ops,
         rawCoords: ops
     };
-    _parsedPathCache.set(p, cached);
-    return cached;
 }
 
 function drawPath(ctx, p, doStroke, scaleMode) {
@@ -34885,6 +34899,16 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
   const CHURN_WASTE = 3;
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const scoreString = cm => (Math.max(0, cm) / 100).toFixed(2) + 'm';
+  // A fill with only a few path points and no bitmap costs the GPU one quad
+  // whether it is drawn or blitted, so a large one is not worth caching: the
+  // bitmap only adds an allocation and pushes other entries out of the budget.
+  const SIMPLE_FILL_POINTS = 8;
+  const SIMPLE_FILL_PIXELS = 250000;
+  // Raster cache limits. Memory is bounded by the pixel budget; the entry cap
+  // only bounds bookkeeping. At 140 entries the many small penguin/bonus
+  // bitmaps evicted each other and were re-rasterized every few seconds.
+  const MAX_RASTERS = 1024;
+  const MAX_RASTER_PIXELS = 2e7;
 
   class OriginalArtRenderer {
     constructor(app) {
@@ -34899,10 +34923,9 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       this.rasters = new Map();
       this.rasterPixels = 0;
       this.rasterizing = false;
-      // Quality guardrail: blitting a cached raster at a fractional offset
-      // resamples edges instead of re-rendering the exact vector path, so
-      // optimizations that would change a single output pixel stay off.
-      this.cullEnabled = false;
+      // Cache hits whose bounds miss the stage entirely are skipped. Such a
+      // blit paints no pixel, so output is unchanged.
+      this.cullEnabled = true;
       const self = this;
       window.place = function(obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time) {
         return self.place(obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time);
@@ -35093,8 +35116,8 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       if (entry) {
         // Frustum culling on the cached padded bounds (cheap: no bounds
         // lookup on the hit path). Frustum-culled blits are pixel-identical
-        // no-ops, and skipping the blit also keeps filmstrip panels from
-        // fighting the budget with entries nobody sees.
+        // no-ops. Misses still rasterize, so tiles are warm before they
+        // scroll into view.
         minX = entry.minX; minY = entry.minY; w = entry.w; h = entry.h;
         entry.used = true;
         // LRU touch: stamp the render that blitted it. Re-inserting the key in
@@ -35103,6 +35126,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         // instead, which only happens when the cache is full. That keeps the
         // ever-present cliff/sky tiles hot when transient UI shapes churn the
         // cache during panel animations.
+        // Stamp before culling so tiles waiting just off-stage stay cached.
         entry.seq = this.renderSeq | 0;
         if (this.culledOut(ctx, matrix, minX, minY, minX + w, minY + h)) return true;
       } else {
@@ -35128,19 +35152,26 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
         w = bounds.maxX - bounds.minX + pad * 2;
         h = bounds.maxY - bounds.minY + pad * 2;
         if (!(w > 0 && h > 0)) return false;
-        if (this.culledOut(ctx, matrix, minX, minY, bounds.maxX + pad, bounds.maxY + pad))
-          return true;
+        // The sky gradient (shape431) is one rectangle whose colour transform
+        // steps with the fader while climbing. Each step used to rasterize a
+        // stage-sized bitmap and evict most of the cache, which then had to
+        // be rebuilt. Draw such fills directly.
+        if (bounds.n <= SIMPLE_FILL_POINTS && !(fn._imgIds && fn._imgIds.length) &&
+            w * h * scale * scale > SIMPLE_FILL_PIXELS) {
+          fn._noRaster = true;
+          return false;
+        }
         const cw = Math.ceil(w * scale);
         const ch = Math.ceil(h * scale);
         // Tall cliff art is a thin strip, so the limit is area, not the long side.
         if (cw < 1 || ch < 1 || cw > 8192 || ch > 8192 || cw * ch > 1200000) return false;
-        while (this.rasters.size > 140 || this.rasterPixels + cw * ch > 2e7) {
+        while (this.rasters.size > MAX_RASTERS || this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) {
           const oldest = this.leastRecentlyUsed();
           if (oldest === undefined) break;
           this.rasterPixels -= this.rasters.get(oldest).px;
           this.rasters.delete(oldest);
         }
-        if (this.rasterPixels + cw * ch > 2e7) return false;
+        if (this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) return false;
         let c;
         try {
           c = document.createElement('canvas');
