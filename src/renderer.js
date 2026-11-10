@@ -367,7 +367,10 @@
         } finally {
           this.rasterizing = false;
         }
-        if (window[obj]._imgIds && window[obj]._imgIds.length) {
+        // Whether a bitmap fill paints depends on the shape's images, not on
+        // this scale or tint, and the probe is a synchronous pixel readback.
+        // One verdict per shape is enough.
+        if (!fn._painted && fn._imgIds && fn._imgIds.length) {
           try {
             const px = Math.min(16, cw), py = Math.min(16, ch);
             const sx0 = Math.max(0, (cw - px) >> 1), sy0 = Math.max(0, (ch - py) >> 1);
@@ -378,6 +381,7 @@
               window[obj]._noRaster = true;
               return false;
             }
+            fn._painted = true;
           } catch (e) {
             window[obj]._noRaster = true;
             return false;

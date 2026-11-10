@@ -364,3 +364,34 @@ test("DPR watch falls back to the legacy MediaQueryList listener API", () => {
   assert.deepEqual(removed, [added[0]], "it removes itself, like {once: true}");
   assert.equal(added.length, 2, "and the watch is re-armed for the new ratio");
 });
+
+test("an image shape's raster is probed for paint once, not on every mint", () => {
+  let probes = 0, alpha = 255;
+  const octx = {
+    setTransform() {},
+    getImageData(x, y, w, h) { probes++; return {data: new Uint8ClampedArray(w * h * 4).fill(alpha)}; }
+  };
+  const window = {enhanceContext: c => c};
+  const document = {createElement: () => ({getContext: () => octx})};
+  vm.runInNewContext(source("src/renderer.js"), {window, document});
+  const r = Object.create(window.OriginalArtRenderer.prototype);
+  r.cullEnabled = false; r.strokes = () => false; r.imagesReady = () => true; r.cxKey = () => 0;
+  let scale = 1;
+  r.getDeviceScale = () => scale;
+  r.localBounds = () => ({minX: 0, minY: 0, maxX: 10, maxY: 10, n: 20, pad: 0, padConst: 0});
+  r.rasters = new Map(); r.rasterPixels = 0;
+  const ctx = {globalCompositeOperation: "source-over", save() {}, restore() {}, transform() {}, drawImage() {}};
+  const blit = name => r.tryBlit(name, ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0);
+  window.shapeImg = () => {};
+  window.shapeImg._imgIds = ["imageObj1"];
+  for (scale of [1, 2, 3]) assert.equal(blit("shapeImg"), true);
+  assert.equal(r.rasters.size, 3);
+  assert.equal(probes, 1, "later mints trust the first verdict");
+  // A raster that came out empty still disables caching for its shape.
+  alpha = 0;
+  window.shapeBlank = () => {};
+  window.shapeBlank._imgIds = ["imageObj2"];
+  assert.equal(blit("shapeBlank"), false);
+  assert.equal(window.shapeBlank._noRaster, true);
+  assert.equal(probes, 2);
+});
