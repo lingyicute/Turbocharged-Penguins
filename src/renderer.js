@@ -497,6 +497,9 @@
       if ((c0 === 115 && obj.charCodeAt(1) === 104) || c0 === 105 || c0 === 109 || c0 === 116) {
         if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0 && blend <= 1 && (!ctx || !ctx._floeMaskPathOnly)) return;
         if (c0 !== 116 && this.tryBlit(obj, ctx, matrix, ctrans, blend, frame, ratio)) return;
+        // A leaf has no timeline and matches none of the sprite cases below.
+        // Returning here skips those comparisons and the draw closure.
+        return this.basePlace(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, 0);
       }
       // sprite13 is the white corner cap (shape12), placed on all four corners.
       if (obj === 'sprite13') return;

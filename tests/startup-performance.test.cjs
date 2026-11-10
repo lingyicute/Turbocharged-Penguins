@@ -266,3 +266,18 @@ test("cache hits wholly outside the stage are skipped but stay recently used", (
   assert.equal(blit(300, 200), true);
   assert.equal(draws, 2);
 });
+
+test("leaf placements go straight to basePlace without reaching the sprite dispatch", () => {
+  const {r} = renderer();
+  const calls = [];
+  r.app = {
+    get rootFrame() { throw Error("sprite dispatch reached"); }, game: null,
+    timeline: {enter() { throw Error("timeline entered"); }, leave() {}}
+  };
+  r.tryBlit = () => false;
+  r.basePlace = (...args) => { calls.push(args); };
+  const m = [1, 0, 0, 1, 0, 0], cx = {a_mult: 255, a_add: 0};
+  for (const name of ["shape12", "image33", "morphshape487", "text90"]) r.place(name, "cv", "ctx", m, cx, 1, 3, 7, 9);
+  assert.equal(calls.length, 4);
+  assert.deepEqual(calls[0], ["shape12", "cv", "ctx", m, cx, 1, 3, 7, 0], "frame and ratio pass through, time is 0");
+});
