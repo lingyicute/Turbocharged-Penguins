@@ -357,6 +357,23 @@ test("cache hits blit under a composed setTransform and put it back without save
   ]);
 });
 
+test("identity placements blit under the current transform without setting it", () => {
+  const {r, window} = renderer();
+  r.cullEnabled = false; r.strokes = () => false; r.imagesReady = () => true;
+  r.getDeviceScale = () => 1; r.cxKey = () => 0; r.renderSeq = 1;
+  const img = {};
+  r.rasters = new Map([["shapeA|0|0|0|1", {c: img, minX: -5, minY: -6, w: 10, h: 12, px: 120, seq: 1}]]);
+  window.shapeA = () => {};
+  const calls = [];
+  const ctx = {
+    globalCompositeOperation: "source-over", canvas: {width: 620, height: 360}, _matrix: [2, 0, 0, 3, 10, 20],
+    save() { calls.push(["save"]); }, restore() { calls.push(["restore"]); }, transform() { calls.push(["transform"]); },
+    setTransform(...m) { calls.push(["setTransform", ...m]); }, drawImage(...a) { calls.push(["drawImage", ...a]); }
+  };
+  assert.equal(r.tryBlit("shapeA", ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0), true);
+  assert.deepEqual(calls, [["drawImage", img, -5, -6, 10, 12]]);
+});
+
 test("DPR watch falls back to the legacy MediaQueryList listener API", () => {
   const added = [], removed = [], queries = [];
   const {r} = renderer({
