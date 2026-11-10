@@ -26,6 +26,15 @@ test('backing store follows display size and uncapped DPR, invalidating only on 
  window.devicePixelRatio=1;r.canvas.getBoundingClientRect=()=>({width:310,height:180});r.handleResize();
  assert.equal(r.canvas.width,310);assert.equal(r.canvas.height,180);
 });
+test('a resize releases the cached raster bitmaps instead of leaving them to the GC',()=>{
+ const {r}=renderer({devicePixelRatio:2});
+ r.canvas={width:620,height:360,getBoundingClientRect:()=>({width:620,height:360})};
+ const a={width:64,height:32},b={width:8,height:8};
+ r.rasters=new Map([['a',{c:a,px:2048}],['b',{c:b,px:64}]]);r.rasterPixels=2112;r.app={};
+ r.handleResize();
+ assert.deepEqual([a.width,a.height,b.width,b.height],[0,0,0,0]);
+ assert.equal(r.rasters.size,0);assert.equal(r.rasterPixels,0);
+});
 test('static raster keys ignore placement frame/ratio and morph shapes are never blitted',()=>{
  const {r,window}=renderer();const keys=[];
  r.strokes=()=>false;r.imagesReady=()=>true;r.getDeviceScale=()=>1;r.cxKey=()=>0;
