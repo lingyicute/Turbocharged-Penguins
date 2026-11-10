@@ -118,6 +118,9 @@
       canvas.height = h;
       if (window.enhanceContext) window.enhanceContext(this.ctx);
       if (this.rasters) {
+        // Dropping the entries alone leaves the bitmaps to the GC, and the last
+        // raster of every shape stays reachable through its _rcPrev.
+        for (const entry of this.rasters.values()) this.releaseRaster(entry);
         this.rasters.clear();
         this.rasterPixels = 0;
       }
@@ -343,11 +346,7 @@
           const victim = this.rasters.get(oldest);
           this.rasterPixels -= victim.px;
           this.rasters.delete(oldest);
-          // Release the backing store now instead of waiting for GC.
-          if (victim.c && typeof victim.c.width === 'number') {
-            victim.c.width = 0;
-            victim.c.height = 0;
-          }
+          this.releaseRaster(victim);
         }
         if (this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) return false;
         let c;
@@ -421,6 +420,15 @@
       ctx.drawImage(entry.c, entry.minX, entry.minY, entry.w, entry.h);
       ctx.restore();
       return true;
+    }
+
+    // Release the backing store now instead of waiting for GC.
+    releaseRaster(entry) {
+      const c = entry.c;
+      if (c && typeof c.width === 'number') {
+        c.width = 0;
+        c.height = 0;
+      }
     }
 
     // Key of the raster blitted longest ago; the earliest inserted wins ties.
