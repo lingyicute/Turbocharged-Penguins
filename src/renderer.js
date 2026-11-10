@@ -281,10 +281,8 @@
       // Exported shape/image functions do not read frame, ratio or time.
       // Placement ratios change each intro tick; including them duplicated
       // identical bitmaps and evicted useful entries during the first seconds.
-      frame = 0; ratio = 0;
-      const ratioKey = ratio == null ? 0 : Math.round(ratio * 1000) / 1000;
       const scaleKey = Math.round(scale * 1000) / 1000;
-      const key = obj + '|' + (frame ?? 0) + '|' + ratioKey + '|' + this.cxKey(ctrans) + '|' + scaleKey;
+      const key = obj + '|0|0|' + this.cxKey(ctrans) + '|' + scaleKey;
       let entry = this.rasters.get(key);
       let minX, minY, w, h;
       if (entry) {
@@ -315,7 +313,7 @@
           fn._rcWaste = waste;
           return false;
         }
-        const bounds = this.localBounds(obj, frame ?? 0, ratioKey, ctrans);
+        const bounds = this.localBounds(obj, 0, 0, ctrans);
         if (!bounds) {
           window[obj]._noRaster = true;
           return false;
@@ -342,8 +340,14 @@
         while (this.rasters.size > MAX_RASTERS || this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) {
           const oldest = this.leastRecentlyUsed();
           if (oldest === undefined) break;
-          this.rasterPixels -= this.rasters.get(oldest).px;
+          const victim = this.rasters.get(oldest);
+          this.rasterPixels -= victim.px;
           this.rasters.delete(oldest);
+          // Release the backing store now instead of waiting for GC.
+          if (victim.c && typeof victim.c.width === 'number') {
+            victim.c.width = 0;
+            victim.c.height = 0;
+          }
         }
         if (this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) return false;
         let c;
@@ -361,8 +365,10 @@
         octx.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale);
         this.rasterizing = true;
         try {
-          window[obj](octx, ctrans, frame ?? 0, ratioKey, 0);
+          window[obj](octx, ctrans, 0, 0, 0);
         } catch (e) {
+          c.width = 0;
+          c.height = 0;
           return false;
         } finally {
           this.rasterizing = false;
@@ -379,11 +385,15 @@
             for (let i = 3; i < data.length; i += 4) if (data[i]) { painted = true; break; }
             if (!painted) {
               window[obj]._noRaster = true;
+              c.width = 0;
+              c.height = 0;
               return false;
             }
             fn._painted = true;
           } catch (e) {
             window[obj]._noRaster = true;
+            c.width = 0;
+            c.height = 0;
             return false;
           }
         }
@@ -601,46 +611,8 @@
       }
       const activeStage = g && a.rootFrame >= 114 && a.rootFrame <= 127;
 
-      const draw = (name, mat, fr, rt = ratio) => {
-        if (!name.startsWith('sprite') && !name.startsWith('button'))
-          return this.basePlace(name, canvas, ctx, mat, ctrans, blend, fr ?? frame, rt, 0);
-        const clip=a.timeline.enter(name);
-        if (name === 'sprite379' && a.mode === 'restarting' && a.rootFrame >= 160 && clip.frame < 5) {
-          a.timeline.goto(clip,5,true);
-        }
-        if (this.currentBonus) {
-          if (name === 'sprite469') this.currentBonus.clickmePath = clip.path;
-          if (name === 'sprite482') {
-            this.currentBonus.buttPath = clip.path;
-            if (this.currentBonus.collected) {
-              clip.frame = 2;
-              clip.playing = false;
-            }
-          }
-          if (name === 'sprite478' || name === 'sprite492' || name === 'sprite498' ||
-              name === 'sprite503' || name === 'sprite508') {
-            this.currentBonus.visualPath = clip.path;
-            if (this.currentBonus.collected && clip.frame === 1 && !clip.playing) {
-              a.timeline.play(clip);
-            }
-          }
-        }
-        if (fr !== undefined) {
-          clip.frame=fr+1;
-          clip.playing=false;
-          const top = a.timeline.parent();
-          if (top && top.path === clip.path) top.frame = clip.frame;
-        }
-        try {
-          return this.basePlace(name, canvas, ctx, mat, ctrans, blend, fr ?? clip.frame-1, rt, 0);
-        } finally {
-          a.timeline.playFrameSounds(clip);
-          a.timeline.leave();
-        }
-      };
-
       if (obj === 'sprite127') {
-        draw(obj, matrix);
+        this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio);
         ctx.save();
         ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
         this.leaderboardValue(ctx, ctrans);
@@ -648,7 +620,7 @@
         return;
       }
       if (obj === 'sprite189') {
-        draw(obj, matrix);
+        this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio);
         ctx.save();
         ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
         this.justReached(ctx, ctrans);
@@ -656,33 +628,33 @@
         return;
       }
       if (obj === 'sprite257')
-        return draw(obj, matrix, Math.max(0, a.panelFrame - 1));
-      if (obj === 'sprite389') return draw(obj, matrix, a.audio.muted ? 1 : 0);
+        return this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, Math.max(0, a.panelFrame - 1));
+      if (obj === 'sprite389') return this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, a.audio.muted ? 1 : 0);
       // sprite380 stays on its exported matrix. The floe looked submerged because
       // its clip mask (shape359) was composited at half alpha, not because of Y.
 
       if (this.drawingTile) {
         if (SKIP_TILE_SPRITES.has(obj)) return;
         if (obj === 'sprite534' || obj === 'sprite536')
-          return draw(obj, matrix, g && g.vy < -35 ? 1 : 0);
+          return this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, g && g.vy < -35 ? 1 : 0);
         // Handle bonus clickme hint - set based on turboClickedToggle and position
         if (obj === 'sprite469') {
           // Original compares the bonus's tile-local _x, and points the hint
           // back toward center: right side shows "onleft", left side "onright".
           const bonus = this.currentBonus;
-          if (bonus && bonus.collected) return draw(obj, matrix);
+          if (bonus && bonus.collected) return this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio);
           if (g && !g.turboClickedToggle && bonus) {
             const pointLeft = bonus.x > 310;
-            return draw(obj, matrix, pointLeft ? 9 : 2);
+            return this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, pointLeft ? 9 : 2);
           }
-          return draw(obj, matrix, 0);
+          return this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, 0);
         }
       }
       if (activeStage) {
         if (obj === 'sprite436') {
           // fader - original: framePos = Math.round(bg._y / 40), clamped to totalframes
           const n = clamp(Math.round(g.bgY / 40), 1, 500) - 1;
-          return draw(obj, matrix, n);
+          return this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio, n);
         }
         if (obj === 'sprite461' || obj === 'sprite538') {
           a.timeline.enter(obj);
@@ -698,39 +670,78 @@
         if (obj === 'sprite568') {
           sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
           sm[4]=g.x; sm[5]=g.y;
-          return draw(obj, sm);
+          return this.drawSprite(obj, canvas, ctx, sm, ctrans, blend, frame, ratio);
         }
         if (obj === 'sprite565') {
-          if (!g.rotation) return draw(obj, matrix);
+          if (!g.rotation) return this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio);
           const r = g.rotation * Math.PI / 180, co = Math.cos(r), si = Math.sin(r);
           const aa=matrix[0], bb=matrix[1], cc=matrix[2], dd=matrix[3];
           sm[0]=aa*co-cc*si; sm[1]=bb*co-dd*si; sm[2]=aa*si+cc*co; sm[3]=bb*si+dd*co;
           sm[4]=matrix[4]; sm[5]=matrix[5];
-          return draw(obj, sm);
+          return this.drawSprite(obj, canvas, ctx, sm, ctrans, blend, frame, ratio);
         }
         if (obj === 'sprite555') {
           sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
           sm[4]=g.x; sm[5]=matrix[5];
-          return draw(obj, sm);
+          return this.drawSprite(obj, canvas, ctx, sm, ctrans, blend, frame, ratio);
         }
         if (obj === 'sprite579') {
           sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
           sm[4]=g.dummyX ?? g.x + 40; sm[5]=g.dummyY ?? g.y;
-          return draw(obj, sm);
+          return this.drawSprite(obj, canvas, ctx, sm, ctrans, blend, frame, ratio);
         }
         if (obj === 'sprite569' && g.explX != null) {
           sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
           sm[4]=g.explX; sm[5]=g.explY;
-          return draw(obj, sm);
+          return this.drawSprite(obj, canvas, ctx, sm, ctrans, blend, frame, ratio);
         }
       }
       if (obj === 'sprite418' && a.launchDx) {
         const sm = this._tmpMatA || (this._tmpMatA = [1,0,0,1,0,0]);
         sm[0]=matrix[0]; sm[1]=matrix[1]; sm[2]=matrix[2]; sm[3]=matrix[3];
         sm[4]=matrix[4] + a.launchDx; sm[5]=matrix[5];
-        return draw(obj, sm);
+        return this.drawSprite(obj, canvas, ctx, sm, ctrans, blend, frame, ratio);
       }
-      return draw(obj, matrix);
+      return this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio);
+    }
+
+    drawSprite(name, canvas, ctx, mat, ctrans, blend, frame, ratio, fr) {
+      if (!name.startsWith('sprite') && !name.startsWith('button'))
+        return this.basePlace(name, canvas, ctx, mat, ctrans, blend, fr ?? frame, ratio, 0);
+      const a = this.app;
+      const clip = a.timeline.enter(name);
+      if (name === 'sprite379' && a.mode === 'restarting' && a.rootFrame >= 160 && clip.frame < 5) {
+        a.timeline.goto(clip, 5, true);
+      }
+      if (this.currentBonus) {
+        if (name === 'sprite469') this.currentBonus.clickmePath = clip.path;
+        if (name === 'sprite482') {
+          this.currentBonus.buttPath = clip.path;
+          if (this.currentBonus.collected) {
+            clip.frame = 2;
+            clip.playing = false;
+          }
+        }
+        if (name === 'sprite478' || name === 'sprite492' || name === 'sprite498' ||
+            name === 'sprite503' || name === 'sprite508') {
+          this.currentBonus.visualPath = clip.path;
+          if (this.currentBonus.collected && clip.frame === 1 && !clip.playing) {
+            a.timeline.play(clip);
+          }
+        }
+      }
+      if (fr !== undefined) {
+        clip.frame = fr + 1;
+        clip.playing = false;
+        const top = a.timeline.parent();
+        if (top && top.path === clip.path) top.frame = clip.frame;
+      }
+      try {
+        return this.basePlace(name, canvas, ctx, mat, ctrans, blend, fr ?? clip.frame - 1, ratio, 0);
+      } finally {
+        a.timeline.playFrameSounds(clip);
+        a.timeline.leave();
+      }
     }
 
     drawFar(canvas, ctx, ctrans, blend) {
@@ -773,8 +784,8 @@
         for (let bi = 0; bi < tile.bonuses.length; bi++) {
           const b = tile.bonuses[bi];
           if (b.collected && this.app.now - b.collected > 560) continue;
-          ctx.save();
-          if (b.collected) ctx.globalAlpha *= clamp(1-(this.app.now-b.collected)/560,0,1);
+          const prevAlpha = ctx.globalAlpha;
+          if (b.collected) ctx.globalAlpha = prevAlpha * clamp(1 - (this.app.now - b.collected) / 560, 0, 1);
           this.currentBonus = b;
           this.drawingTile = true;
           bonusMat[4] = g.bgX + b.x;
@@ -786,8 +797,8 @@
             this.app.timeline.leave();
             this.drawingTile = false;
             this.currentBonus = null;
+            ctx.globalAlpha = prevAlpha;
           }
-          ctx.restore();
         }
         const best = (this.app.mode === 'playing' ? this.app.storedBest : (this.app.beatenBest ?? this.app.storedBest)) || 0;
         const minScore = (n-1)*445 + 500;

@@ -49,6 +49,10 @@ var createCanvas = function (width, height) {
     // contents are guaranteed to be stale.
     if (canReset && stageSized) {
         if (_poolW !== width || _poolH !== height) {
+            for (var pi = 0; pi < _canvasPool.length; pi++) {
+                _canvasPool[pi].width = 0;
+                _canvasPool[pi].height = 0;
+            }
             _canvasPool = [];
             _canvasPoolUsed = 0;
             _poolW = width;
@@ -900,6 +904,7 @@ function concatMatrix(m1, m2) {
                 this._matrix = [a, b, c, d, e, f];
             }
         }
+        if (arguments.length === 6) return origSetTransform.call(this, a, b, c, d, e, f);
         return origSetTransform.apply(this, arguments);
     };
 
@@ -938,6 +943,8 @@ var enhanceContext = function (context) {
     context._savedMatrices = [];
     context._savedClipBoxes = [];
     context._clipBox = null;
+    context._pathBox = null;
+    context._cachedPath = null;
     return context;
 };
 
@@ -1354,6 +1361,7 @@ var place = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio,
 }
 
 var _colorCache = {};
+var _colorZeroCache = {};
 var tocolor = function (c) {
     var a = c[3];
     if (a === 1) {
@@ -1363,6 +1371,14 @@ var tocolor = function (c) {
         var r = "rgba(" + c[0] + "," + c[1] + "," + c[2] + ",1)";
         _colorCache[key] = r;
         return r;
+    }
+    if (a === 0) {
+        var zkey = (c[0] << 16) | (c[1] << 8) | c[2];
+        var zcached = _colorZeroCache[zkey];
+        if (zcached !== undefined) return zcached;
+        var zr = "rgba(" + c[0] + "," + c[1] + "," + c[2] + ",0)";
+        _colorZeroCache[zkey] = zr;
+        return zr;
     }
     return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")";
 };
@@ -1536,15 +1552,20 @@ function parsePathString(p) {
     return cached;
 }
 
+var _fastDraw = null;
+
 function parsePathOps(p) {
     var parts = p.split(" ");
     var len = parts.length;
     var ops = [];
     var drawCommand = "";
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, n = 0;
 
     for (var i = 0; i < len; i++) {
         var tok = parts[i];
         switch (tok) {
+            case '':
+                break;
             case 'L':
             case 'M':
             case 'Q':
@@ -1555,18 +1576,52 @@ function parsePathOps(p) {
                 break;
             default:
                 switch (drawCommand) {
-                    case 'L':
-                        ops.push(1, +tok, +parts[i + 1]);
+                    case 'L': {
+                        var lx = +tok, ly = +parts[i + 1];
+                        ops.push(1, lx, ly);
+                        if (lx === lx && ly === ly) {
+                            if (lx < minX) minX = lx;
+                            if (ly < minY) minY = ly;
+                            if (lx > maxX) maxX = lx;
+                            if (ly > maxY) maxY = ly;
+                            n++;
+                        }
                         i++;
                         break;
-                    case 'M':
-                        ops.push(2, +tok, +parts[i + 1]);
+                    }
+                    case 'M': {
+                        var mx = +tok, my = +parts[i + 1];
+                        ops.push(2, mx, my);
+                        if (mx === mx && my === my) {
+                            if (mx < minX) minX = mx;
+                            if (my < minY) minY = my;
+                            if (mx > maxX) maxX = mx;
+                            if (my > maxY) maxY = my;
+                            n++;
+                        }
                         i++;
                         break;
-                    case 'Q':
-                        ops.push(3, +tok, +parts[i + 1], +parts[i + 2], +parts[i + 3]);
+                    }
+                    case 'Q': {
+                        var cx = +tok, cy = +parts[i + 1], qx = +parts[i + 2], qy = +parts[i + 3];
+                        ops.push(3, cx, cy, qx, qy);
+                        if (cx === cx && cy === cy) {
+                            if (cx < minX) minX = cx;
+                            if (cy < minY) minY = cy;
+                            if (cx > maxX) maxX = cx;
+                            if (cy > maxY) maxY = cy;
+                            n++;
+                        }
+                        if (qx === qx && qy === qy) {
+                            if (qx < minX) minX = qx;
+                            if (qy < minY) minY = qy;
+                            if (qx > maxX) maxX = qx;
+                            if (qy > maxY) maxY = qy;
+                            n++;
+                        }
                         i += 3;
                         break;
+                    }
                 }
                 break;
         }
@@ -1574,12 +1629,71 @@ function parsePathOps(p) {
 
     return {
         ops: ops,
-        rawCoords: ops
+        rawCoords: ops,
+        box: n ? { minX: minX, minY: minY, maxX: maxX, maxY: maxY, n: n } : null,
+        path2d: null
     };
+}
+
+function buildPath2D(parsed) {
+    var p2d = parsed.path2d;
+    if (p2d) return p2d;
+    p2d = new Path2D();
+    var ops = parsed.ops;
+    var len = ops.length;
+    for (var i = 0; i < len; ) {
+        var op = ops[i++];
+        if (op === 1) {
+            p2d.lineTo(ops[i++], ops[i++]);
+        } else if (op === 2) {
+            p2d.moveTo(ops[i++], ops[i++]);
+        } else if (op === 3) {
+            p2d.quadraticCurveTo(ops[i++], ops[i++], ops[i++], ops[i++]);
+        } else if (op === 0) {
+            p2d.closePath();
+        }
+    }
+    parsed.path2d = p2d;
+    return p2d;
+}
+
+function applyParsedBox(ctx, pb) {
+    var b = ctx._pathBox;
+    if (!b) b = ctx._pathBox = {minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, n: 0};
+    if (pb) {
+        b.minX = pb.minX;
+        b.minY = pb.minY;
+        b.maxX = pb.maxX;
+        b.maxY = pb.maxY;
+        b.n = pb.n;
+        if (ctx._trackLocal && ctx._matrix && ctx._matrix[0] === 1 && ctx._matrix[3] === 1 &&
+                !ctx._matrix[1] && !ctx._matrix[2] && !ctx._matrix[4] && !ctx._matrix[5]) {
+            var lb = ctx._localBox;
+            if (!lb) {
+                ctx._localBox = {minX: pb.minX, minY: pb.minY, maxX: pb.maxX, maxY: pb.maxY, n: pb.n};
+            } else {
+                if (pb.minX < lb.minX) lb.minX = pb.minX;
+                if (pb.minY < lb.minY) lb.minY = pb.minY;
+                if (pb.maxX > lb.maxX) lb.maxX = pb.maxX;
+                if (pb.maxY > lb.maxY) lb.maxY = pb.maxY;
+                lb.n += pb.n;
+            }
+        }
+    } else {
+        b.minX = Infinity;
+        b.minY = Infinity;
+        b.maxX = -Infinity;
+        b.maxY = -Infinity;
+        b.n = 0;
+    }
 }
 
 function drawPath(ctx, p, doStroke, scaleMode) {
     var parsed = parsePathString(p);
+    var fd = _fastDraw;
+    var fastCtx = fd && ctx._enhanced &&
+        ctx.beginPath === fd.begin && ctx.moveTo === fd.move &&
+        ctx.lineTo === fd.line && ctx.quadraticCurveTo === fd.quad;
 
     if (doStroke) {
         trackStrokePad(ctx, scaleMode);
@@ -1600,30 +1714,86 @@ function drawPath(ctx, p, doStroke, scaleMode) {
         }
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        ctx.beginPath();
         var raw = parsed.rawCoords;
         var rlen = raw.length;
         var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
-        for (var j = 0; j < rlen; ) {
-            var op = raw[j++];
-            if (op === 1) {
-                var x = raw[j++], y = raw[j++];
-                ctx.lineTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
-            } else if (op === 2) {
-                var x = raw[j++], y = raw[j++];
-                ctx.moveTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
-            } else if (op === 3) {
-                var cx = raw[j++], cy = raw[j++], x = raw[j++], y = raw[j++];
-                ctx.quadraticCurveTo(
-                    m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
-                    m0 * x + m2 * y + m4, m1 * x + m3 * y + m5
-                );
-            } else if (op === 0) {
-                ctx.closePath();
+        if (fastCtx && !ctx._trackLocal) {
+            ctx._cachedPath = null;
+            var sb = ctx._pathBox;
+            if (sb) { sb.minX = Infinity; sb.minY = Infinity; sb.maxX = -Infinity; sb.maxY = -Infinity; sb.n = 0; }
+            fd.origBegin.call(ctx);
+            var oMove = fd.origMove, oLine = fd.origLine, oQuad = fd.origQuad;
+            for (var j = 0; j < rlen; ) {
+                var op = raw[j++];
+                if (op === 1) {
+                    var x = raw[j++], y = raw[j++];
+                    oLine.call(ctx, m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+                } else if (op === 2) {
+                    var x = raw[j++], y = raw[j++];
+                    oMove.call(ctx, m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+                } else if (op === 3) {
+                    var cx = raw[j++], cy = raw[j++], x = raw[j++], y = raw[j++];
+                    oQuad.call(ctx,
+                        m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
+                        m0 * x + m2 * y + m4, m1 * x + m3 * y + m5
+                    );
+                } else if (op === 0) {
+                    ctx.closePath();
+                }
+            }
+        } else {
+            ctx.beginPath();
+            for (var j = 0; j < rlen; ) {
+                var op = raw[j++];
+                if (op === 1) {
+                    var x = raw[j++], y = raw[j++];
+                    ctx.lineTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+                } else if (op === 2) {
+                    var x = raw[j++], y = raw[j++];
+                    ctx.moveTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+                } else if (op === 3) {
+                    var cx = raw[j++], cy = raw[j++], x = raw[j++], y = raw[j++];
+                    ctx.quadraticCurveTo(
+                        m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
+                        m0 * x + m2 * y + m4, m1 * x + m3 * y + m5
+                    );
+                } else if (op === 0) {
+                    ctx.closePath();
+                }
             }
         }
         ctx.stroke();
         ctx.restore();
+        return;
+    }
+
+    if (fastCtx) {
+        if (!ctx._trackLocal && !ctx._floeMaskPathOnly &&
+                fd.fill && ctx.fill === fd.fill && ctx.clip === fd.clip &&
+                (!fd.stroke || ctx.stroke === fd.stroke) &&
+                typeof Path2D === "function") {
+            applyParsedBox(ctx, parsed.box);
+            ctx._cachedPath = buildPath2D(parsed);
+            return;
+        }
+        ctx._cachedPath = null;
+        applyParsedBox(ctx, parsed.box);
+        fd.origBegin.call(ctx);
+        var fOps = parsed.ops;
+        var fLen = fOps.length;
+        var fMove = fd.origMove, fLine = fd.origLine, fQuad = fd.origQuad;
+        for (var k = 0; k < fLen; ) {
+            var fOp = fOps[k++];
+            if (fOp === 1) {
+                fLine.call(ctx, fOps[k++], fOps[k++]);
+            } else if (fOp === 2) {
+                fMove.call(ctx, fOps[k++], fOps[k++]);
+            } else if (fOp === 3) {
+                fQuad.call(ctx, fOps[k++], fOps[k++], fOps[k++], fOps[k++]);
+            } else if (fOp === 0) {
+                ctx.closePath();
+            }
+        }
         return;
     }
 
@@ -1654,6 +1824,8 @@ function drawPath(ctx, p, doStroke, scaleMode) {
     var proto = CanvasRenderingContext2D.prototype;
     var origFillRect = proto.fillRect;
     var origClip = proto.clip;
+    var origFill = proto.fill;
+    var origStroke = proto.stroke;
     var origBegin = proto.beginPath;
     var origMove = proto.moveTo;
     var origLine = proto.lineTo;
@@ -1697,24 +1869,59 @@ function drawPath(ctx, p, doStroke, scaleMode) {
         return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
     }
 
-    proto.beginPath = function () {
+    var wrappedBegin = function () {
+        this._cachedPath = null;
         var b = box(this);
         b.minX = Infinity; b.minY = Infinity; b.maxX = -Infinity; b.maxY = -Infinity; b.n = 0;
         return origBegin.call(this);
     };
-    proto.moveTo = function (x, y) { add(this, x, y); return origMove.call(this, x, y); };
-    proto.lineTo = function (x, y) { add(this, x, y); return origLine.call(this, x, y); };
-    proto.quadraticCurveTo = function (cx, cy, x, y) {
+    var wrappedMove = function (x, y) { this._cachedPath = null; add(this, x, y); return origMove.call(this, x, y); };
+    var wrappedLine = function (x, y) { this._cachedPath = null; add(this, x, y); return origLine.call(this, x, y); };
+    var wrappedQuad = function (cx, cy, x, y) {
+        this._cachedPath = null;
         add(this, cx, cy); add(this, x, y);
         return origQuad.call(this, cx, cy, x, y);
     };
-    proto.clip = function () {
+    var wrappedClip = function () {
         var b = this._pathBox;
         var usesCurrentPath = arguments.length === 0 || typeof arguments[0] === "string";
         this._clipBox = (usesCurrentPath && b && b.n && this._matrix)
             ? {minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY, m: this._matrix}
             : null;
+        if (usesCurrentPath && this._cachedPath) {
+            return arguments.length ? origClip.call(this, this._cachedPath, arguments[0]) : origClip.call(this, this._cachedPath);
+        }
         return origClip.apply(this, arguments);
+    };
+    // A deferred Path2D stands in for the current path only when the caller
+    // asked for the current path (no args, or just a fill rule). An explicit
+    // Path2D argument always wins.
+    var wrappedFill = typeof origFill === "function" ? function () {
+        if (this._cachedPath && (arguments.length === 0 || typeof arguments[0] === "string")) {
+            return arguments.length ? origFill.call(this, this._cachedPath, arguments[0]) : origFill.call(this, this._cachedPath);
+        }
+        return arguments.length ? origFill.apply(this, arguments) : origFill.call(this);
+    } : null;
+    var wrappedStroke = typeof origStroke === "function" ? function () {
+        if (this._cachedPath && arguments.length === 0) {
+            return origStroke.call(this, this._cachedPath);
+        }
+        return arguments.length ? origStroke.apply(this, arguments) : origStroke.call(this);
+    } : null;
+
+    proto.beginPath = wrappedBegin;
+    proto.moveTo = wrappedMove;
+    proto.lineTo = wrappedLine;
+    proto.quadraticCurveTo = wrappedQuad;
+    proto.clip = wrappedClip;
+    if (wrappedFill) proto.fill = wrappedFill;
+    if (wrappedStroke) proto.stroke = wrappedStroke;
+
+    _fastDraw = {
+        begin: wrappedBegin, move: wrappedMove, line: wrappedLine, quad: wrappedQuad,
+        clip: wrappedClip, fill: wrappedFill, stroke: wrappedStroke,
+        origBegin: origBegin, origMove: origMove, origLine: origLine, origQuad: origQuad,
+        origClip: origClip, origFill: origFill, origStroke: origStroke
     };
     proto.fillRect = function (x, y, w, h) {
         if (w === 32768 && x === -16384 && h === 32768 && this._clipBox && this._matrix) {

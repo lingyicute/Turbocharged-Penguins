@@ -52,7 +52,8 @@
       this.introWait = 0;
       this.canvas.style.cursor = 'pointer';
       this.bindInputs();
-      requestAnimationFrame(t => this.loop(t));
+      this._rafLoop = t => this.loop(t);
+      requestAnimationFrame(this._rafLoop);
     }
     readBest() {
       try {
@@ -132,9 +133,10 @@
     }
 
     loop(now) {
+      const raf = this._rafLoop || (this._rafLoop = t => this.loop(t));
       if (document.hidden) {
         this.lastTime = now;
-        requestAnimationFrame(t => this.loop(t));
+        requestAnimationFrame(raf);
         return;
       }
       let dt = this.lastTime ? clamp(now-this.lastTime, 0, 80) : FRAME_MS;
@@ -170,7 +172,7 @@
         // Rendering creates clips the pre-render state did not yet include.
         this.visualStateChanged();
       }
-      requestAnimationFrame(t => this.loop(t));
+      requestAnimationFrame(raf);
     }
 
     // Idle screens (tap-to-start, how-to, result) redraw only when a clip, the
