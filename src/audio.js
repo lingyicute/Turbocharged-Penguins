@@ -77,17 +77,24 @@
       // untrimmed media-element fallback. Later unlocks hit the
       // buffered/in-flight guards in loadEffect and cost nothing.
       for (const id of EFFECT_IDS) this.loadEffect(id);
+      this.resumeContext();
       if (this.unlocked) {
         this.ensureMusic();
         if (this.stingPending) this.playIntroSting();
         return;
       }
       this.unlocked = true;
-      if (this.audioContext && this.audioContext.state === 'suspended') {
-        this.audioContext.resume().catch(() => {});
-      }
       this.ensureMusic();
       if (this.stingPending) this.playIntroSting();
+    }
+
+    // Called on every gesture, not only the unlocking one: a touch or pen
+    // press carries no user activation (its release does), so the first
+    // resume() can be refused.
+    resumeContext() {
+      if (this.audioContext && !this.hiddenPaused && this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
     }
 
     ensureMusic() {
@@ -416,7 +423,9 @@
       }
       this.hiddenAt = 0;
       if (!this.unlocked) return;
-      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+      // Where suspend() settles asynchronously the state still reads 'running'
+      // after a quick hide/show, and the context would stay suspended for good.
+      if (ctx) ctx.resume().catch(() => {});
       if (this.musicWasPlaying) {
         this.musicWasPlaying = false;
         this.fallbackMusic = true;

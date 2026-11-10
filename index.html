@@ -34371,17 +34371,24 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       // untrimmed media-element fallback. Later unlocks hit the
       // buffered/in-flight guards in loadEffect and cost nothing.
       for (const id of EFFECT_IDS) this.loadEffect(id);
+      this.resumeContext();
       if (this.unlocked) {
         this.ensureMusic();
         if (this.stingPending) this.playIntroSting();
         return;
       }
       this.unlocked = true;
-      if (this.audioContext && this.audioContext.state === 'suspended') {
-        this.audioContext.resume().catch(() => {});
-      }
       this.ensureMusic();
       if (this.stingPending) this.playIntroSting();
+    }
+
+    // Called on every gesture, not only the unlocking one: a touch or pen
+    // press carries no user activation (its release does), so the first
+    // resume() can be refused.
+    resumeContext() {
+      if (this.audioContext && !this.hiddenPaused && this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
     }
 
     ensureMusic() {
@@ -34710,7 +34717,9 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       }
       this.hiddenAt = 0;
       if (!this.unlocked) return;
-      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+      // Where suspend() settles asynchronously the state still reads 'running'
+      // after a quick hide/show, and the context would stay suspended for good.
+      if (ctx) ctx.resume().catch(() => {});
       if (this.musicWasPlaying) {
         this.musicWasPlaying = false;
         this.fallbackMusic = true;
@@ -36552,6 +36561,9 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       this.canvas.addEventListener('pointerup', e => {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         e.preventDefault();
+        // A touch or pen press is not a user activation, its release is. Give
+        // an audio context the press could not start another chance.
+        if (this.audio.unlocked) this.audio.resumeContext();
         const p=this.stagePoint(e);this.pointer=p;window.Physics._pointerX=p.x;
         const hit=this.hitArea(p.x,p.y);
         const same=hit && hit===this.pressed;
