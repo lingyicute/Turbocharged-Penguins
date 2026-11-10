@@ -347,3 +347,20 @@ test("cache hits blit under a composed setTransform and put it back without save
     ["setTransform", 2, 0, 0, 3, 10, 20]
   ]);
 });
+
+test("DPR watch falls back to the legacy MediaQueryList listener API", () => {
+  const added = [], removed = [], queries = [];
+  const {r} = renderer({
+    devicePixelRatio: 2,
+    matchMedia: q => { queries.push(q); return {addListener: fn => added.push(fn), removeListener: fn => removed.push(fn)}; }
+  });
+  let resizes = 0;
+  r.handleResize = () => { resizes++; };
+  r.watchDpr();
+  assert.deepEqual(queries, ["(resolution: 2dppx)"]);
+  assert.equal(added.length, 1, "no addEventListener: the legacy listener is used instead of throwing");
+  added[0]();
+  assert.equal(resizes, 1);
+  assert.deepEqual(removed, [added[0]], "it removes itself, like {once: true}");
+  assert.equal(added.length, 2, "and the watch is re-armed for the new ratio");
+});
