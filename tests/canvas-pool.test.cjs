@@ -244,3 +244,23 @@ test("drawPlacedGlyphs hoists save/restore and skips space glyphs", () => {
   assert.equal(restores, 1, "single restore per glyph run");
   assert.deepEqual(glyphsDrawn, ["A", "B"], "space glyph is skipped");
 });
+
+test("pooled stage canvases are released once renders stop asking for them", () => {
+  const {core, state} = loadCore({supportsReset: true});
+  core.beginCanvasPool();
+  const a = core.createCanvas(620, 360), b = core.createCanvas(620, 360);
+  for (let i = 0; i < 100; i++) {
+    core.beginCanvasPool();
+    assert.equal(core.createCanvas(620, 360), a);
+    assert.equal(core.createCanvas(620, 360), b);
+  }
+  assert.equal(state.created.length, 2, "steady use keeps recycling the same pair");
+  // The first idle render still follows a full one; sixty more must pass.
+  for (let i = 0; i < 60; i++) core.beginCanvasPool();
+  assert.deepEqual([a.width, b.width], [620, 620], "a short gap keeps the pool warm");
+  core.beginCanvasPool();
+  assert.deepEqual([a.width, a.height, b.width, b.height], [0, 0, 0, 0], "backing stores are dropped");
+  const fresh = core.createCanvas(620, 360);
+  assert.ok(fresh !== a && fresh !== b);
+  assert.equal(state.created.length, 3, "a later mask simply allocates again");
+});

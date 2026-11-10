@@ -13,7 +13,23 @@ var _canvasPoolUsed = 0;
 var _poolW = 0;
 var _poolH = 0;
 var _cachedGameCanvas = null;
-var beginCanvasPool = function () { _canvasPoolUsed = 0; };
+var _canvasPoolIdle = 0;
+var beginCanvasPool = function () {
+    // Only the intro masks through stage-sized canvases. Once renders stop
+    // asking for them, release the backing stores instead of holding two
+    // stage-sized bitmaps for the rest of the session.
+    if (_canvasPoolUsed >= _canvasPool.length) {
+        _canvasPoolIdle = 0;
+    } else if (++_canvasPoolIdle >= 60) {
+        for (var i = _canvasPoolUsed; i < _canvasPool.length; i++) {
+            _canvasPool[i].width = 0;
+            _canvasPool[i].height = 0;
+        }
+        _canvasPool.length = _canvasPoolUsed;
+        _canvasPoolIdle = 0;
+    }
+    _canvasPoolUsed = 0;
+};
 var createCanvas = function (width, height) {
     if (!_cachedGameCanvas || !_cachedGameCanvas.isConnected) {
         _cachedGameCanvas = typeof document !== "undefined" ? document.getElementById("game") : null;
