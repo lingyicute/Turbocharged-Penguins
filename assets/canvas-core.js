@@ -901,7 +901,10 @@ function concatMatrix(m1, m2) {
             } else if (a && typeof a === 'object') {
                 this._matrix = [a.a ?? 1, a.b ?? 0, a.c ?? 0, a.d ?? 1, a.e ?? 0, a.f ?? 0];
             } else {
-                this._matrix = [a, b, c, d, e, f];
+                var m = this._matrix;
+                if (!m || m[0] !== a || m[1] !== b || m[2] !== c || m[3] !== d || m[4] !== e || m[5] !== f) {
+                    this._matrix = [a, b, c, d, e, f];
+                }
             }
         }
         if (arguments.length === 6) return origSetTransform.call(this, a, b, c, d, e, f);
@@ -1077,13 +1080,16 @@ var placeRaw = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, rat
         try {
             drawFn(ctx, ctrans, frame, ratio, time);
         } finally {
-            ctx.setTransform(p0, p1, p2, p3, p4, p5);
             ctx._matrix = p;
+            ctx.setTransform(p0, p1, p2, p3, p4, p5);
         }
         return;
     }
     ctx.save();
-    ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
+    if (matrix[0] !== 1 || matrix[1] !== 0 || matrix[2] !== 0 || matrix[3] !== 1 ||
+        matrix[4] !== 0 || matrix[5] !== 0) {
+        ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
+    }
     if (blendMode > 1) {
         var oldctx = ctx;
         var ncanvas = createCanvas(canvas.width, canvas.height);
@@ -1705,7 +1711,7 @@ function applyParsedBox(ctx, pb) {
                 !ctx._matrix[1] && !ctx._matrix[2] && !ctx._matrix[4] && !ctx._matrix[5]) {
             var lb = ctx._localBox;
             if (!lb) {
-                ctx._localBox = {minX: pb.minX, minY: pb.minY, maxX: pb.maxX, maxY: pb.maxY, n: pb.n};
+                ctx._localBox = {minX: pb.minX, minY: pb.minY, maxX: pb.maxX, maxY: pb.maxY, n: pb.n, px: (pb.minX + pb.maxX) * 0.5, py: (pb.minY + pb.maxY) * 0.5};
             } else {
                 if (pb.minX < lb.minX) lb.minX = pb.minX;
                 if (pb.minY < lb.minY) lb.minY = pb.minY;
