@@ -447,3 +447,58 @@ test("an image shape's raster is probed for paint once, not on every mint", () =
   assert.equal(window.shapeBlank._noRaster, true);
   assert.equal(probes, 2);
 });
+
+test("placeRaw skips save/restore for sprite and button containers and skips transform on identity or zero-alpha", () => {
+  const calls = [];
+  class MockContext {
+    save() { calls.push(["save"]); }
+    restore() { calls.push(["restore"]); }
+    transform(...a) { calls.push(["transform", ...a]); }
+    setTransform(...a) { calls.push(["setTransform", ...a]); }
+    resetTransform() {}
+    fillRect() {} clip() {} beginPath() {} moveTo() {} lineTo() {} quadraticCurveTo() {} createPattern() { return {}; }
+  }
+  const win = {CanvasRenderingContext2D: MockContext, document: {getElementById: () => null, createElement: () => ({getContext: () => new MockContext()})}};
+  win.window = win;
+  vm.runInNewContext(source("assets/canvas-core.js"), win);
+  const ctx = win.enhanceContext(new MockContext());
+  const rootMat = ctx._matrix;
+  win.spriteChild = c => { calls.push(["draw", Array.from(c._matrix)]); };
+  win.placeRaw("spriteChild", {}, ctx, [1, 0, 0, 1, 0, 0], {a_mult: 255, a_add: 0}, 1, 0, 0, 0);
+  assert.deepEqual(calls, [["draw", [1, 0, 0, 1, 0, 0]]], "identity sprite placement touches neither save/restore nor setTransform");
+  assert.equal(ctx._matrix, rootMat);
+
+  calls.length = 0;
+  win.placeRaw("spriteChild", {}, ctx, [2, 0, 0, 2, 10, 20], {a_mult: 255, a_add: 0}, 1, 0, 0, 0);
+  assert.deepEqual(calls, [
+    ["setTransform", 2, 0, 0, 2, 10, 20],
+    ["draw", [2, 0, 0, 2, 10, 20]],
+    ["setTransform", 1, 0, 0, 1, 0, 0]
+  ]);
+  assert.equal(ctx._matrix, rootMat, "restores original _matrix reference");
+
+  calls.length = 0;
+  win.placeRaw("spriteChild", {}, ctx, [2, 0, 0, 2, 10, 20], {a_mult: 0, a_add: 0}, 1, 0, 0, 0);
+  assert.deepEqual(calls, [["draw", [1, 0, 0, 1, 0, 0]]], "zero-alpha sprite container skips transform updates");
+});
+
+test("same-frame internal goto does not recurse into onFrame unless retrigger is true", () => {
+  const window = {FRAME_SOUNDS: {}, sprite28: function() { var frame_cnt = 13; }};
+  vm.runInNewContext(source("src/timeline.js"), {window, Math});
+  const tl = new window.ClipTimelines({rootFrame: 1, audio: null});
+  tl.begin();
+  const clip = tl.enter("sprite28");
+  tl.leave();
+  let randomCalls = 0;
+  const origRandom = Math.random;
+  Math.random = () => { randomCalls++; return 0; };
+  try {
+    clip.frame = 1;
+    clip.playing = true;
+    tl.advance();
+    assert.equal(clip.frame, 2);
+    assert.equal(randomCalls, 1, "frame 2 loop script runs once per tick instead of recursing");
+  } finally {
+    Math.random = origRandom;
+  }
+});

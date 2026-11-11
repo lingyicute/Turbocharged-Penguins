@@ -159,6 +159,15 @@
     opaque(ctrans) {
       let solid = ctrans._opaque;
       if (solid !== undefined) return solid;
+      if (!ctrans.r_add && !ctrans.g_add && !ctrans.b_add &&
+          ctrans.r_mult === ctrans.g_mult && ctrans.r_mult === ctrans.b_mult) {
+        if (ctrans.r_mult === 256) {
+          return (ctrans._opaque = this._opaque256 || (this._opaque256 = new window.cxform(0, 0, 0, 0, 256, 256, 256, 255)));
+        }
+        if (ctrans.r_mult === 255) {
+          return (ctrans._opaque = this._opaque255 || (this._opaque255 = new window.cxform(0, 0, 0, 0, 255, 255, 255, 255)));
+        }
+      }
       const key = ctrans.r_add + ',' + ctrans.g_add + ',' + ctrans.b_add + ',' +
         ctrans.r_mult + ',' + ctrans.g_mult + ',' + ctrans.b_mult;
       const shared = this.opaques || (this.opaques = new Map());
@@ -212,10 +221,14 @@
         if (m) {
           if (window.enhanceContext) window.enhanceContext(m);
           const noop = () => {};
+          const dummyPaint = { addColorStop: noop };
           m.fill = noop;
           m.stroke = noop;
           m.clip = noop;
           m.fillRect = noop;
+          m.createLinearGradient = () => dummyPaint;
+          m.createRadialGradient = () => dummyPaint;
+          m.createPattern = () => dummyPaint;
         }
         this._meter = m;
       }
@@ -424,6 +437,7 @@
           p0 * matrix[4] + p2 * matrix[5] + p4, p1 * matrix[4] + p3 * matrix[5] + p5);
         ctx.drawImage(entry.c, entry.minX, entry.minY, entry.w, entry.h);
         ctx.setTransform(p0, p1, p2, p3, p4, p5);
+        ctx._matrix = p;
         return true;
       }
       ctx.save();
