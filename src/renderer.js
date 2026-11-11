@@ -800,6 +800,9 @@
         }
         const tile = g.tiles.get(n);
         if (!tile) continue;
+        // Clip ids depend only on the tile number and slot, so they are built
+        // once per tile instead of once per bonus per frame.
+        const clipIds = tile.clipIds || (tile.clipIds = []);
         for (let bi = 0; bi < tile.bonuses.length; bi++) {
           const b = tile.bonuses[bi];
           if (b.collected && this.app.now - b.collected > 560) continue;
@@ -809,7 +812,7 @@
           this.drawingTile = true;
           bonusMat[4] = g.bgX + b.x;
           bonusMat[5] = g.bgY - n * 445 + b.y;
-          this.app.timeline.enter('sprite509', `t${n}_${bi}`);
+          this.app.timeline.enter('sprite509', clipIds[bi] || (clipIds[bi] = `t${n}_${bi}`));
           try {
             this.basePlace('sprite509', canvas, ctx, bonusMat, ctrans, blend, b.type, 0, 0);
           } finally {
