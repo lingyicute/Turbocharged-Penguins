@@ -1541,7 +1541,10 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
 
     if (doStroke) {
         trackStrokePad(ctx, scaleMode);
-        ctx.save();
+        // As in drawPath: only lineWidth and the transform change, so put
+        // them back by hand instead of copying the whole context state.
+        var savedLineWidth = ctx.lineWidth;
+        try {
         switch (scaleMode) {
             case "NONE":
                 break;
@@ -1587,7 +1590,13 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
             }
         }
         ctx.stroke();
-        ctx.restore();
+        } finally {
+            ctx.lineWidth = savedLineWidth;
+            if (m) {
+                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+                ctx._matrix = m;
+            }
+        }
         return;
     }
 
@@ -1785,7 +1794,12 @@ function drawPath(ctx, p, doStroke, scaleMode) {
     }
     if (doStroke) {
         var m = ctx._matrix;
-        ctx.save();
+        // Only lineWidth and the transform change below, and neither the
+        // current path nor those two are saved by save()/restore() any
+        // differently than putting them back by hand. Strokes are never
+        // raster-cached, so this runs for every stroked shape every frame.
+        var savedLineWidth = ctx.lineWidth;
+        try {
         switch (scaleMode) {
             case "NONE":
                 break;
@@ -1850,7 +1864,13 @@ function drawPath(ctx, p, doStroke, scaleMode) {
             }
         }
         ctx.stroke();
-        ctx.restore();
+        } finally {
+            ctx.lineWidth = savedLineWidth;
+            if (m) {
+                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+                ctx._matrix = m;
+            }
+        }
         return;
     }
 
