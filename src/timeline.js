@@ -187,7 +187,9 @@
 
     goto(clip, frame, playing = true, retrigger = false) {
       if (!clip) return;
-      clip.frame = Math.max(1, Math.min(clip.length, frame));
+      const nextFrame = Math.max(1, Math.min(clip.length, frame));
+      const sameFrame = clip.frame === nextFrame;
+      clip.frame = nextFrame;
       clip.playing = playing;
       if (this.stackIndex >= 0 && this.stack[this.stackIndex]?.path === clip.path) {
         this.stack[this.stackIndex].frame = clip.frame;
@@ -197,7 +199,7 @@
       // or a same-frame goto would recurse.
       if (retrigger) clip.soundedFrame = 0;
       if (DELAYS[clip.id]?.[clip.frame]) this.clips.delete(clip.path + '/sprite25#0');
-      this.onFrame(clip);
+      if (!sameFrame || retrigger) this.onFrame(clip);
     }
 
     requestPlay(path, frame, playing = true) {
