@@ -34,18 +34,28 @@ if wav.exists():
 def inline_script(content):
     return "<script>\n" + re.sub(r"</script", r"<\\/script", content, flags=re.I) + "\n</script>"
 
+# A substitution that silently does not happen would emit a page still
+# pointing at (or missing) files the single-file build must inline, while
+# reporting success. Fail loudly instead.
+def sub_once(pattern, repl, text):
+    page, n = re.subn(pattern, repl, text, count=1)
+    if n != 1:
+        raise SystemExit(f"build_singlefile: pattern not found in dev.html: {pattern}")
+    return page
+
+
 # Callable replacement: a plain string would have backslashes in the CSS
 # interpreted as regex escapes (e.g. content: "\201C").
-page = re.sub(r'<link rel="stylesheet" href="src/style.css">',
-              lambda _: '<style>\n' + STYLE + '\n</style>', SOURCE, count=1)
-page = re.sub(r'\s*<script defer src="assets/canvas-core.js"></script>', '', page, count=1)
-page = re.sub(r'\s*<script defer src="assets/f-art.js"></script>', '', page, count=1)
-page = re.sub(r'\s*<script defer src="src/f-data.js"></script>', '', page, count=1)
-page = re.sub(r'\s*<script defer src="src/timeline.js"></script>', '', page, count=1)
-page = re.sub(r'\s*<script defer src="src/audio.js"></script>', '', page, count=1)
-page = re.sub(r'\s*<script defer src="src/physics.js"></script>', '', page, count=1)
-page = re.sub(r'\s*<script defer src="src/renderer.js"></script>', '', page, count=1)
-page = re.sub(r'\s*<script defer src="src/game.js"></script>', '', page, count=1)
+page = sub_once(r'<link rel="stylesheet" href="src/style.css">',
+              lambda _: '<style>\n' + STYLE + '\n</style>', SOURCE)
+page = sub_once(r'\s*<script defer src="assets/canvas-core.js"></script>', '', page)
+page = sub_once(r'\s*<script defer src="assets/f-art.js"></script>', '', page)
+page = sub_once(r'\s*<script defer src="src/f-data.js"></script>', '', page)
+page = sub_once(r'\s*<script defer src="src/timeline.js"></script>', '', page)
+page = sub_once(r'\s*<script defer src="src/audio.js"></script>', '', page)
+page = sub_once(r'\s*<script defer src="src/physics.js"></script>', '', page)
+page = sub_once(r'\s*<script defer src="src/renderer.js"></script>', '', page)
+page = sub_once(r'\s*<script defer src="src/game.js"></script>', '', page)
 
 scripts = '\n'.join((
     inline_script(CORE),
@@ -58,6 +68,8 @@ scripts = '\n'.join((
     inline_script('window.TURBO_AUDIO = ' + json.dumps(audio, separators=(',', ':')) + ';'),
     inline_script(GAME)
 ))
+if '</body>' not in page:
+    raise SystemExit("build_singlefile: </body> not found in dev.html")
 page = page.replace('</body>', scripts + '\n</body>')
 output = ROOT / 'index.html'
 output.write_text(page, encoding="utf-8")
