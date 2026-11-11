@@ -140,11 +140,11 @@
       if (!p || !matrix) return 0;
       const dx = p[0] * matrix[0] + p[2] * matrix[1];
       const dy = p[1] * matrix[0] + p[3] * matrix[1];
-      const ax = Math.hypot(dx, dy);
+      const ax = dy === 0 ? Math.abs(dx) : dx === 0 ? Math.abs(dy) : Math.hypot(dx, dy);
       if (ax <= 0.02) return 0;
       const ex = p[0] * matrix[2] + p[2] * matrix[3];
       const ey = p[1] * matrix[2] + p[3] * matrix[3];
-      const ay = Math.hypot(ex, ey);
+      const ay = ex === 0 ? Math.abs(ey) : ey === 0 ? Math.abs(ex) : Math.hypot(ex, ey);
       if (ay <= 0.02) return 0;
       const maxA = ax > ay ? ax : ay;
       const minA = ax < ay ? ax : ay;
@@ -507,6 +507,14 @@
       const t3 = pm[1] * matrix[2] + pm[3] * matrix[3];
       const t4 = pm[0] * matrix[4] + pm[2] * matrix[5] + pm[4];
       const t5 = pm[1] * matrix[4] + pm[3] * matrix[5] + pm[5];
+      if (t1 === 0 && t2 === 0) {
+        let dx0 = t0 * lx0 + t4, dx1 = t0 * lx1 + t4;
+        if (dx0 > dx1) { const tmp = dx0; dx0 = dx1; dx1 = tmp; }
+        if (dx1 <= 0 || dx0 >= ctx.canvas.width) return true;
+        let dy0 = t3 * ly0 + t5, dy1 = t3 * ly1 + t5;
+        if (dy0 > dy1) { const tmp = dy0; dy0 = dy1; dy1 = tmp; }
+        return dy1 <= 0 || dy0 >= ctx.canvas.height;
+      }
       let ddx, ddy, dx0, dy0, dx1, dy1;
       ddx = t0 * lx0 + t2 * ly0 + t4; ddy = t1 * lx0 + t3 * ly0 + t5;
       dx0 = dx1 = ddx; dy0 = dy1 = ddy;
@@ -524,8 +532,8 @@
 
     // Drawn in text484's space, where "x2" sits, so the bolt lands in the bubble.
     lightningLabel(ctx, ctrans) {
+      if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0) return;
       const col = window.tocolor(ctrans.apply([252, 197, 0, 1]));
-      ctx.save();
       ctx.beginPath();
       ctx.moveTo(BOLT_PTS[0][0], BOLT_PTS[0][1]);
       for (let i = 1; i < BOLT_PTS.length; i++) {
@@ -534,7 +542,6 @@
       ctx.closePath();
       ctx.fillStyle = col;
       ctx.fill();
-      ctx.restore();
     }
 
     placedGlyphs(ctx, font, rgba, glyphs) {
@@ -561,6 +568,7 @@
     // saveBest has already replaced storedBest, so that panel keeps the
     // record this run broke.
     leaderboardValue(ctx, ctrans) {
+      if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0) return;
       const col = window.tocolor(ctrans.apply([145, 24, 118, 1]));
       const onAwesome = this.app.timeline.parent()?.id === 189;
       const best = (onAwesome ? this.app.beatenBest : this.app.storedBest) || 0;
@@ -585,6 +593,7 @@
     }
     // End panel only (sprite189). Two lines fill the card area above the bar.
     justReached(ctx, ctrans) {
+      if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0) return;
       const cm = this.app.game?.cm ?? this.app.storedBest ?? 0;
       const score = this.app.game?.finalScore || scoreString(cm);
       const cx = -280;
@@ -672,19 +681,13 @@
       }
       const activeStage = g && a.rootFrame >= 114 && a.rootFrame <= 127;
 
-      if (obj === 'sprite127') {
+      if (obj === 'sprite127' || obj === 'sprite189') {
         this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio);
+        if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0) return;
         ctx.save();
         ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
-        this.leaderboardValue(ctx, ctrans);
-        ctx.restore();
-        return;
-      }
-      if (obj === 'sprite189') {
-        this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio);
-        ctx.save();
-        ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
-        this.justReached(ctx, ctrans);
+        if (obj === 'sprite127') this.leaderboardValue(ctx, ctrans);
+        else this.justReached(ctx, ctrans);
         ctx.restore();
         return;
       }

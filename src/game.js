@@ -540,11 +540,13 @@
       if (this.mode==='playing') {
         const g=this.game;
         if (g.turbos>0 && x>470 && y>300) return 'turbo';
+        const baseX = g.bgX + 33.1;
         for (const [n,tile] of g.tiles) {
+          const baseY = g.bgY - n * 445 + 33.1;
           for (const b of tile.bonuses) {
             if (b.collected) continue;
-            const center = window.Physics.bonusStageCenter(g, n, b);
-            if (Math.hypot(x-center.x, y-center.y) < 36) return b;
+            const dx = x - (baseX + b.x), dy = y - (baseY + b.y);
+            if (dx * dx + dy * dy < 1296) return b;
           }
         }
         // button567 is hit-only (shape 566). Its stage rect, from the exported

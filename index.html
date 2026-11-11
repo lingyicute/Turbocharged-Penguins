@@ -1028,12 +1028,15 @@ cxform.prototype._cut = function (v, min, max) {
 
 cxform.prototype.apply = function (c) {
     if (this._empty) return c;
-    var d = c;
-    d[0] = this._cut(Math.round(d[0] * this.r_mult / 255 + this.r_add), 0, 255);
-    d[1] = this._cut(Math.round(d[1] * this.g_mult / 255 + this.g_add), 0, 255);
-    d[2] = this._cut(Math.round(d[2] * this.b_mult / 255 + this.b_add), 0, 255);
-    d[3] = this._cut(d[3] * this.a_mult / 255 + this.a_add / 255, 0, 1);
-    return d;
+    var r = Math.round(c[0] * this.r_mult / 255 + this.r_add);
+    var g = Math.round(c[1] * this.g_mult / 255 + this.g_add);
+    var b = Math.round(c[2] * this.b_mult / 255 + this.b_add);
+    var a = c[3] * this.a_mult / 255 + this.a_add / 255;
+    c[0] = r < 0 ? 0 : r > 255 ? 255 : r;
+    c[1] = g < 0 ? 0 : g > 255 ? 255 : g;
+    c[2] = b < 0 ? 0 : b > 255 ? 255 : b;
+    c[3] = a < 0 ? 0 : a > 1 ? 1 : a;
+    return c;
 };
 
 cxform.prototype._getLuts = function () {
@@ -1117,8 +1120,7 @@ cxform.prototype.isEmpty = function () {
 
 var placeRaw = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time) {
     var drawFn = window[obj];
-    if (blendMode <= 1 && typeof drawFn === "function" && ctx && ctx._enhanced && ctx._matrix &&
-        ((obj.charCodeAt(0) === 115 && obj.charCodeAt(1) === 112) || obj.charCodeAt(0) === 98)) {
+    if (blendMode <= 1 && typeof drawFn === "function" && ctx && ctx._enhanced && ctx._matrix) {
         if ((matrix[0] === 1 && matrix[1] === 0 && matrix[2] === 0 && matrix[3] === 1 &&
              matrix[4] === 0 && matrix[5] === 0) ||
             (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0 && !ctx._floeMaskPathOnly)) {
@@ -1599,8 +1601,8 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
         } finally {
             ctx.lineWidth = savedLineWidth;
             if (m) {
-                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
                 ctx._matrix = m;
+                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
             }
         }
         return;
@@ -1874,8 +1876,8 @@ function drawPath(ctx, p, doStroke, scaleMode) {
         } finally {
             ctx.lineWidth = savedLineWidth;
             if (m) {
-                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
                 ctx._matrix = m;
+                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
             }
         }
         return;
@@ -35297,11 +35299,11 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       if (!p || !matrix) return 0;
       const dx = p[0] * matrix[0] + p[2] * matrix[1];
       const dy = p[1] * matrix[0] + p[3] * matrix[1];
-      const ax = Math.hypot(dx, dy);
+      const ax = dy === 0 ? Math.abs(dx) : dx === 0 ? Math.abs(dy) : Math.hypot(dx, dy);
       if (ax <= 0.02) return 0;
       const ex = p[0] * matrix[2] + p[2] * matrix[3];
       const ey = p[1] * matrix[2] + p[3] * matrix[3];
-      const ay = Math.hypot(ex, ey);
+      const ay = ex === 0 ? Math.abs(ey) : ey === 0 ? Math.abs(ex) : Math.hypot(ex, ey);
       if (ay <= 0.02) return 0;
       const maxA = ax > ay ? ax : ay;
       const minA = ax < ay ? ax : ay;
@@ -35664,6 +35666,14 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       const t3 = pm[1] * matrix[2] + pm[3] * matrix[3];
       const t4 = pm[0] * matrix[4] + pm[2] * matrix[5] + pm[4];
       const t5 = pm[1] * matrix[4] + pm[3] * matrix[5] + pm[5];
+      if (t1 === 0 && t2 === 0) {
+        let dx0 = t0 * lx0 + t4, dx1 = t0 * lx1 + t4;
+        if (dx0 > dx1) { const tmp = dx0; dx0 = dx1; dx1 = tmp; }
+        if (dx1 <= 0 || dx0 >= ctx.canvas.width) return true;
+        let dy0 = t3 * ly0 + t5, dy1 = t3 * ly1 + t5;
+        if (dy0 > dy1) { const tmp = dy0; dy0 = dy1; dy1 = tmp; }
+        return dy1 <= 0 || dy0 >= ctx.canvas.height;
+      }
       let ddx, ddy, dx0, dy0, dx1, dy1;
       ddx = t0 * lx0 + t2 * ly0 + t4; ddy = t1 * lx0 + t3 * ly0 + t5;
       dx0 = dx1 = ddx; dy0 = dy1 = ddy;
@@ -35681,8 +35691,8 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
 
     // Drawn in text484's space, where "x2" sits, so the bolt lands in the bubble.
     lightningLabel(ctx, ctrans) {
+      if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0) return;
       const col = window.tocolor(ctrans.apply([252, 197, 0, 1]));
-      ctx.save();
       ctx.beginPath();
       ctx.moveTo(BOLT_PTS[0][0], BOLT_PTS[0][1]);
       for (let i = 1; i < BOLT_PTS.length; i++) {
@@ -35691,7 +35701,6 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       ctx.closePath();
       ctx.fillStyle = col;
       ctx.fill();
-      ctx.restore();
     }
 
     placedGlyphs(ctx, font, rgba, glyphs) {
@@ -35718,6 +35727,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
     // saveBest has already replaced storedBest, so that panel keeps the
     // record this run broke.
     leaderboardValue(ctx, ctrans) {
+      if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0) return;
       const col = window.tocolor(ctrans.apply([145, 24, 118, 1]));
       const onAwesome = this.app.timeline.parent()?.id === 189;
       const best = (onAwesome ? this.app.beatenBest : this.app.storedBest) || 0;
@@ -35742,6 +35752,7 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
     }
     // End panel only (sprite189). Two lines fill the card area above the bar.
     justReached(ctx, ctrans) {
+      if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0) return;
       const cm = this.app.game?.cm ?? this.app.storedBest ?? 0;
       const score = this.app.game?.finalScore || scoreString(cm);
       const cx = -280;
@@ -35829,19 +35840,13 @@ window.PENGUIN_LABEL_FRAME = Object.freeze({
       }
       const activeStage = g && a.rootFrame >= 114 && a.rootFrame <= 127;
 
-      if (obj === 'sprite127') {
+      if (obj === 'sprite127' || obj === 'sprite189') {
         this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio);
+        if (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0) return;
         ctx.save();
         ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
-        this.leaderboardValue(ctx, ctrans);
-        ctx.restore();
-        return;
-      }
-      if (obj === 'sprite189') {
-        this.drawSprite(obj, canvas, ctx, matrix, ctrans, blend, frame, ratio);
-        ctx.save();
-        ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
-        this.justReached(ctx, ctrans);
+        if (obj === 'sprite127') this.leaderboardValue(ctx, ctrans);
+        else this.justReached(ctx, ctrans);
         ctx.restore();
         return;
       }
@@ -36601,11 +36606,13 @@ window.TURBO_AUDIO = {"1":"data:audio/mpeg;base64,//NAwAAAAAJYAUAAAAIAAAAEACGEBA
       if (this.mode==='playing') {
         const g=this.game;
         if (g.turbos>0 && x>470 && y>300) return 'turbo';
+        const baseX = g.bgX + 33.1;
         for (const [n,tile] of g.tiles) {
+          const baseY = g.bgY - n * 445 + 33.1;
           for (const b of tile.bonuses) {
             if (b.collected) continue;
-            const center = window.Physics.bonusStageCenter(g, n, b);
-            if (Math.hypot(x-center.x, y-center.y) < 36) return b;
+            const dx = x - (baseX + b.x), dy = y - (baseY + b.y);
+            if (dx * dx + dy * dy < 1296) return b;
           }
         }
         // button567 is hit-only (shape 566). Its stage rect, from the exported
