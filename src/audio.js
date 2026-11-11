@@ -223,15 +223,16 @@
         const to = out.getChannelData(c);
         for (let loop = 0; loop < loops; loop++) {
           const base = loop * (len - fade);
-          for (let i = 0; i < len; i++) {
-            const s = from[start + i];
-            const at = base + i;
-            if (loop > 0 && i < fade) {
+          if (loop > 0) {
+            // Only the crossfade head needs per-sample blending; the rest
+            // is a straight copy the typed array can do natively.
+            for (let i = 0; i < fade; i++) {
               const t = i / fade;
-              to[at] = to[at] * (1 - t) + s * t;
-            } else {
-              to[at] = s;
+              to[base + i] = to[base + i] * (1 - t) + from[start + i] * t;
             }
+            to.set(from.subarray(start + fade, start + len), base + fade);
+          } else {
+            to.set(from.subarray(start, start + len), base);
           }
         }
       }
@@ -258,7 +259,7 @@
           const t = i / fade;
           to[i] = from[end - fade + 1 + i] * (1 - t) + from[start + i] * t;
         }
-        for (let i = fade; i < period; i++) to[i] = from[start + i];
+        to.set(from.subarray(start + fade, start + period), fade);
       }
       return out;
     }
@@ -271,9 +272,7 @@
       const channels = decoded.numberOfChannels;
       const out = this.audioContext.createBuffer(channels, decoded.length - skip, decoded.sampleRate);
       for (let c = 0; c < channels; c++) {
-        const from = decoded.getChannelData(c);
-        const to = out.getChannelData(c);
-        for (let i = 0; i < to.length; i++) to[i] = from[skip + i];
+        out.getChannelData(c).set(decoded.getChannelData(c).subarray(skip));
       }
       return out;
     }
