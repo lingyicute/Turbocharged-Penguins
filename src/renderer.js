@@ -291,8 +291,7 @@
       if (entry) {
         // Frustum culling on the cached padded bounds (cheap: no bounds
         // lookup on the hit path). Frustum-culled blits are pixel-identical
-        // no-ops. Misses still rasterize, so tiles are warm before they
-        // scroll into view.
+        // no-ops.
         minX = entry.minX; minY = entry.minY; w = entry.w; h = entry.h;
         entry.used = true;
         // LRU touch: stamp the render that blitted it. Re-inserting the key in
@@ -327,6 +326,10 @@
         w = bounds.maxX - bounds.minX + pad * 2;
         h = bounds.maxY - bounds.minY + pad * 2;
         if (!(w > 0 && h > 0)) return false;
+        // On a cache miss, avoid allocating and painting a bitmap that cannot
+        // touch the stage. Its padded bounds are the same ones used on hits;
+        // it will be rasterized when it first scrolls into view.
+        if (this.culledOut(ctx, matrix, minX, minY, minX + w, minY + h)) return true;
         // The sky gradient (shape431) is one rectangle whose colour transform
         // steps with the fader while climbing. Each step used to rasterize a
         // stage-sized bitmap and evict most of the cache, which then had to
@@ -340,7 +343,7 @@
         const ch = Math.ceil(h * scale);
         // Tall cliff art is a thin strip, so the limit is area, not the long side.
         if (cw < 1 || ch < 1 || cw > 8192 || ch > 8192 || cw * ch > 1200000) return false;
-        while (this.rasters.size > MAX_RASTERS || this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) {
+        while (this.rasters.size >= MAX_RASTERS || this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) {
           const oldest = this.leastRecentlyUsed();
           if (oldest === undefined) break;
           const victim = this.rasters.get(oldest);

@@ -166,13 +166,13 @@ test("eviction drops the raster blitted longest ago, not the earliest inserted",
   const t = churnRenderer();
   const {r} = t;
   r.renderSeq = 9;
-  for (let i = 0; i < 1025; i++) r.rasters.set('k' + i, {c: {}, px: 1, seq: i === 70 ? 1 : 9});
-  r.rasterPixels = 1025;
+  for (let i = 0; i < 1024; i++) r.rasters.set('k' + i, {c: {}, px: 1, seq: i === 70 ? 1 : 9});
+  r.rasterPixels = 1024;
   assert.equal(r.leastRecentlyUsed(), 'k70');
   assert.equal(t.blit(1), true);
   assert.equal(r.rasters.has('k70'), false, "the stalest entry was evicted");
   assert.equal(r.rasters.has('k0'), true, "insertion order alone no longer decides");
-  assert.equal(r.rasters.size, 1025);
+  assert.equal(r.rasters.size, 1024, "insertion at capacity does not exceed the entry limit");
   assert.ok(r.rasterPixels >= 1024, "evicted pixels are subtracted, the new raster is added");
 });
 
@@ -250,6 +250,32 @@ test("raster cache evicts by pixel budget, not by a small entry count", () => {
   assert.equal(r.tryBlit("shapeNext", ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0), true);
   assert.ok(!r.rasters.has("old0"));
   assert.ok(r.rasterPixels <= 2e7);
+});
+
+test("off-stage cache misses do not allocate rasters until the shape enters the stage", () => {
+  let allocations = 0, paints = 0, blits = 0;
+  const window = {enhanceContext: c => c, shapeOffscreen: () => { paints++; }};
+  const document = {createElement: () => {
+    allocations++;
+    return {width: 0, height: 0, getContext: () => ({setTransform() {}})};
+  }};
+  vm.runInNewContext(source('src/renderer.js'), {window, document});
+  const r = Object.create(window.OriginalArtRenderer.prototype);
+  r.rasters = new Map(); r.rasterPixels = 0; r.cullEnabled = true;
+  r.strokes = () => false; r.imagesReady = () => true;
+  r.getDeviceScale = () => 1; r.cxKey = () => '0';
+  r.localBounds = () => ({minX: 0, minY: 0, maxX: 10, maxY: 10, n: 20});
+  const ctx = {
+    canvas: {width: 620, height: 360}, _matrix: [1, 0, 0, 1, 0, 0],
+    globalCompositeOperation: 'source-over', setTransform() {}, drawImage() { blits++; }
+  };
+  const place = x => r.tryBlit('shapeOffscreen', ctx, [1, 0, 0, 1, x, 10], {}, 1, 0, 0);
+  assert.equal(place(700), true);
+  assert.equal(allocations, 0); assert.equal(paints, 0); assert.equal(r.rasters.size, 0);
+  assert.equal(place(600), true, 'the padded bounds still overlap the stage');
+  assert.equal(allocations, 1); assert.equal(paints, 1); assert.equal(blits, 1);
+  assert.equal(place(600), true);
+  assert.equal(allocations, 1); assert.equal(blits, 2);
 });
 
 test("cache hits wholly outside the stage are skipped but stay recently used", () => {
