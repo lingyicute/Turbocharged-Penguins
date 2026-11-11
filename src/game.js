@@ -589,7 +589,8 @@
       this.canvas.addEventListener('pointermove', e => {
         const p=this.stagePoint(e);this.pointer=p;window.Physics._pointerX=p.x;
         const area=this.hitArea(p.x,p.y);
-        this.canvas.style.cursor = !this.audio.unlocked || area ? 'pointer' : 'default';
+        const cursor = !this.audio.unlocked || area ? 'pointer' : 'default';
+        if (this.canvas.style.cursor !== cursor) this.canvas.style.cursor = cursor;
         if (this.mode==='select') this.hoverPenguin(/^penguin[123]$/.test(area||'') ? +area.slice(-1) : 0);
       });
       this.canvas.addEventListener('pointerleave', () => {
