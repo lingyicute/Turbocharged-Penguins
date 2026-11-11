@@ -145,7 +145,15 @@
         path = slot.paths[identity];
         if (path === undefined) path = slot.paths[identity] = parent.path + '/' + name + '#' + identity;
       } else {
-        path = parent.path + '/' + name + '#' + identity;
+        // String identities (penguins, per-tile bonuses) are few and fixed
+        // per slot, so cache their paths too instead of rebuilding the
+        // string on every enter of every frame.
+        const byIdentity = slot.strPaths || (slot.strPaths = new Map());
+        path = byIdentity.get(identity);
+        if (path === undefined) {
+          path = parent.path + '/' + name + '#' + identity;
+          byIdentity.set(identity, path);
+        }
       }
       const length = id ? this.length(id) : 1;
       let clip = this.clips.get(path);
