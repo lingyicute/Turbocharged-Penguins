@@ -502,3 +502,30 @@ test("same-frame internal goto does not recurse into onFrame unless retrigger is
     Math.random = origRandom;
   }
 });
+
+test("two-column bitmap shapes with hollow centers probe on a subpath and cache", () => {
+  let probedX = -1, probedY = -1;
+  const octx = {
+    setTransform() {},
+    getImageData(x, y, w, h) {
+      probedX = x; probedY = y;
+      const hit = x < 40;
+      return {data: new Uint8ClampedArray(w * h * 4).fill(hit ? 255 : 0)};
+    }
+  };
+  const window = {enhanceContext: c => c};
+  const document = {createElement: () => ({width: 0, height: 0, getContext: () => octx})};
+  vm.runInNewContext(source("src/renderer.js"), {window, document});
+  const r = Object.create(window.OriginalArtRenderer.prototype);
+  r.cullEnabled = false; r.strokes = () => false; r.imagesReady = () => true;
+  r.getDeviceScale = () => 0.05; r.cxKey = () => 0;
+  r.localBounds = () => ({minX: -6541, minY: -13698, maxX: 6542, maxY: -3870, n: 10, px: -6161, py: -8898});
+  r.rasters = new Map(); r.rasterPixels = 0;
+  window.shapeCliff = () => {};
+  window.shapeCliff._imgIds = ["imageObj433"];
+  const ctx = {globalCompositeOperation: "source-over", save() {}, restore() {}, transform() {}, drawImage() {}};
+  assert.equal(r.tryBlit("shapeCliff", ctx, [1, 0, 0, 1, 0, 0], {}, 1, 0, 0), true);
+  assert.ok(probedX >= 0 && probedX < 40, "probe lands on left cliff column instead of empty center");
+  assert.equal(window.shapeCliff._painted, true);
+  assert.equal(r.rasters.size, 1);
+});

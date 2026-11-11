@@ -120,7 +120,13 @@
       if (this.rasters) {
         // Dropping the entries alone leaves the bitmaps to the GC, and the last
         // raster of every shape stays reachable through its _rcPrev.
-        for (const entry of this.rasters.values()) this.releaseRaster(entry);
+        for (const entry of this.rasters.values()) {
+          if (entry.fn) {
+            entry.fn._rcWaste = 0;
+            entry.fn._rcLastKey = undefined;
+          }
+          this.releaseRaster(entry);
+        }
         this.rasters.clear();
         this.rasterPixels = 0;
       }
@@ -221,7 +227,7 @@
         if (m) {
           if (window.enhanceContext) window.enhanceContext(m);
           const noop = () => {};
-          const dummyPaint = { addColorStop: noop };
+          const dummyPaint = { addColorStop: noop, setTransform: noop };
           m.fill = noop;
           m.stroke = noop;
           m.clip = noop;
@@ -403,7 +409,12 @@
         if (!fn._painted && fn._imgIds && fn._imgIds.length) {
           try {
             const px = Math.min(16, cw), py = Math.min(16, ch);
-            const sx0 = Math.max(0, (cw - px) >> 1), sy0 = Math.max(0, (ch - py) >> 1);
+            const sx0 = Number.isFinite(bounds.px)
+              ? clamp(Math.round((bounds.px - minX) * scale) - (px >> 1), 0, Math.max(0, cw - px))
+              : Math.max(0, (cw - px) >> 1);
+            const sy0 = Number.isFinite(bounds.py)
+              ? clamp(Math.round((bounds.py - minY) * scale) - (py >> 1), 0, Math.max(0, ch - py))
+              : Math.max(0, (ch - py) >> 1);
             const data = octx.getImageData(sx0, sy0, px, py).data;
             let painted = false;
             for (let i = 3; i < data.length; i += 4) if (data[i]) { painted = true; break; }
@@ -421,7 +432,7 @@
             return false;
           }
         }
-        entry = { c, minX, minY, w: cw / scale, h: ch / scale, px: cw * ch, used: false, seq: this.renderSeq | 0 };
+        entry = { c, minX, minY, w: cw / scale, h: ch / scale, px: cw * ch, used: false, seq: this.renderSeq | 0, fn };
         this.rasterPixels += entry.px;
         this.rasters.set(key, entry);
         fn._rcWaste = prev !== undefined && !prev.used ? waste + 1 : waste;
@@ -445,8 +456,8 @@
         ctx.setTransform(p0 * m0 + p2 * m1, p1 * m0 + p3 * m1, p0 * m2 + p2 * m3, p1 * m2 + p3 * m3,
           p0 * matrix[4] + p2 * matrix[5] + p4, p1 * matrix[4] + p3 * matrix[5] + p5);
         ctx.drawImage(entry.c, entry.minX, entry.minY, entry.w, entry.h);
-        ctx.setTransform(p0, p1, p2, p3, p4, p5);
         ctx._matrix = p;
+        ctx.setTransform(p0, p1, p2, p3, p4, p5);
         return true;
       }
       ctx.save();
@@ -458,6 +469,7 @@
 
     // Release the backing store now instead of waiting for GC.
     releaseRaster(entry) {
+      if (entry.fn && entry.fn._rcPrev === entry) entry.fn._rcPrev = undefined;
       const c = entry.c;
       if (c && typeof c.width === 'number') {
         c.width = 0;
