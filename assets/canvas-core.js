@@ -1038,11 +1038,13 @@ cxform.prototype.applyToImage = function (fimg) {
 cxform.prototype.merge = function (cx) {
     if (this._empty) return cx;
     if (!cx || cx._empty) return this;
+    // this is the parent: the child's offsets are scaled by the parent's
+    // multiplier before the parent's own offsets are added.
     return new cxform(
-        this.r_add + cx.r_add,
-        this.g_add + cx.g_add,
-        this.b_add + cx.b_add,
-        this.a_add + cx.a_add,
+        this.r_add + cx.r_add * this.r_mult / 255,
+        this.g_add + cx.g_add * this.g_mult / 255,
+        this.b_add + cx.b_add * this.b_mult / 255,
+        this.a_add + cx.a_add * this.a_mult / 255,
         this.r_mult * cx.r_mult / 255,
         this.g_mult * cx.g_mult / 255,
         this.b_mult * cx.b_mult / 255,
