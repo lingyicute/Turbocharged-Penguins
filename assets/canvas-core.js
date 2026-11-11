@@ -1491,55 +1491,55 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
 
     if (doStroke) {
         trackStrokePad(ctx, scaleMode);
-        // As in drawPath: only lineWidth and the transform change, so put
-        // them back by hand instead of copying the whole context state.
+        // As in drawPath: restore lineWidth and the transform by hand rather
+        // than paying for a full save()/restore().
         var savedLineWidth = ctx.lineWidth;
         try {
-        switch (scaleMode) {
-            case "NONE":
-                break;
-            case "NORMAL":
-                ctx.lineWidth *= 20 * Math.max(Math.abs(m[0]), Math.abs(m[1]), Math.abs(m[2]), Math.abs(m[3]));
-                break;
-            case "VERTICAL":
-                ctx.lineWidth *= 20 * Math.hypot(m[2], m[3]);
-                break;
-            case "HORIZONTAL":
-                ctx.lineWidth *= 20 * Math.hypot(m[0], m[1]);
-                break;
-        }
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-        ctx.beginPath();
-        var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
-        var rf = ratio / 65535;
-        for (var i = 0; i < len; ) {
-            var cmd = ops[i++];
-            if (cmd === 1) {
-                var lx = ops[i] + (ops[i + 1] - ops[i]) * rf;
-                var ly = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
-                ctx.lineTo(m0 * lx + m2 * ly + m4, m1 * lx + m3 * ly + m5);
-                i += 4;
-            } else if (cmd === 2) {
-                var mx = ops[i] + (ops[i + 1] - ops[i]) * rf;
-                var my = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
-                ctx.moveTo(m0 * mx + m2 * my + m4, m1 * mx + m3 * my + m5);
-                i += 4;
-            } else if (cmd === 3) {
-                var cx = ops[i] + (ops[i + 1] - ops[i]) * rf;
-                var cy = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
-                var qx = ops[i + 4] + (ops[i + 5] - ops[i + 4]) * rf;
-                var qy = ops[i + 6] + (ops[i + 7] - ops[i + 6]) * rf;
-                ctx.quadraticCurveTo(
-                    m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
-                    m0 * qx + m2 * qy + m4, m1 * qx + m3 * qy + m5
-                );
-                i += 8;
-            } else if (cmd === 0) {
-                ctx.closePath();
+            switch (scaleMode) {
+                case "NONE":
+                    break;
+                case "NORMAL":
+                    ctx.lineWidth *= 20 * Math.max(Math.abs(m[0]), Math.abs(m[1]), Math.abs(m[2]), Math.abs(m[3]));
+                    break;
+                case "VERTICAL":
+                    ctx.lineWidth *= 20 * Math.hypot(m[2], m[3]);
+                    break;
+                case "HORIZONTAL":
+                    ctx.lineWidth *= 20 * Math.hypot(m[0], m[1]);
+                    break;
             }
-        }
-        ctx.stroke();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            ctx.beginPath();
+            var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
+            var rf = ratio / 65535;
+            for (var i = 0; i < len; ) {
+                var cmd = ops[i++];
+                if (cmd === 1) {
+                    var lx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                    var ly = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                    ctx.lineTo(m0 * lx + m2 * ly + m4, m1 * lx + m3 * ly + m5);
+                    i += 4;
+                } else if (cmd === 2) {
+                    var mx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                    var my = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                    ctx.moveTo(m0 * mx + m2 * my + m4, m1 * mx + m3 * my + m5);
+                    i += 4;
+                } else if (cmd === 3) {
+                    var cx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                    var cy = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                    var qx = ops[i + 4] + (ops[i + 5] - ops[i + 4]) * rf;
+                    var qy = ops[i + 6] + (ops[i + 7] - ops[i + 6]) * rf;
+                    ctx.quadraticCurveTo(
+                        m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
+                        m0 * qx + m2 * qy + m4, m1 * qx + m3 * qy + m5
+                    );
+                    i += 8;
+                } else if (cmd === 0) {
+                    ctx.closePath();
+                }
+            }
+            ctx.stroke();
         } finally {
             ctx.lineWidth = savedLineWidth;
             if (m) {
@@ -1744,76 +1744,77 @@ function drawPath(ctx, p, doStroke, scaleMode) {
     }
     if (doStroke) {
         var m = ctx._matrix;
-        // Only lineWidth and the transform change below, and neither the
-        // current path nor those two are saved by save()/restore() any
-        // differently than putting them back by hand. Strokes are never
-        // raster-cached, so this runs for every stroked shape every frame.
+        // Only lineWidth and the transform are modified below, so restore just
+        // those two (the finally block also covers a throw mid-stroke) instead
+        // of copying the whole context state with save()/restore(). Strokes
+        // are never raster-cached, so this runs for every stroked shape every
+        // frame.
         var savedLineWidth = ctx.lineWidth;
         try {
-        switch (scaleMode) {
-            case "NONE":
-                break;
-            case "NORMAL":
-                ctx.lineWidth *= 20 * Math.max(Math.abs(m[0]), Math.abs(m[1]), Math.abs(m[2]), Math.abs(m[3]));
-                break;
-            case "VERTICAL":
-                ctx.lineWidth *= 20 * Math.hypot(m[2], m[3]);
-                break;
-            case "HORIZONTAL":
-                ctx.lineWidth *= 20 * Math.hypot(m[0], m[1]);
-                break;
-        }
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+            switch (scaleMode) {
+                case "NONE":
+                    break;
+                case "NORMAL":
+                    ctx.lineWidth *= 20 * Math.max(Math.abs(m[0]), Math.abs(m[1]), Math.abs(m[2]), Math.abs(m[3]));
+                    break;
+                case "VERTICAL":
+                    ctx.lineWidth *= 20 * Math.hypot(m[2], m[3]);
+                    break;
+                case "HORIZONTAL":
+                    ctx.lineWidth *= 20 * Math.hypot(m[0], m[1]);
+                    break;
+            }
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        var raw = parsed.rawCoords;
-        var rlen = raw.length;
-        var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
-        if (fastCtx && !ctx._trackLocal) {
-            ctx._cachedPath = null;
-            var sb = ctx._pathBox;
-            if (sb) { sb.minX = Infinity; sb.minY = Infinity; sb.maxX = -Infinity; sb.maxY = -Infinity; sb.n = 0; }
-            fd.origBegin.call(ctx);
-            var oMove = fd.origMove, oLine = fd.origLine, oQuad = fd.origQuad;
-            for (var j = 0; j < rlen; ) {
-                var op = raw[j++];
-                if (op === 1) {
-                    var x = raw[j++], y = raw[j++];
-                    oLine.call(ctx, m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
-                } else if (op === 2) {
-                    var x = raw[j++], y = raw[j++];
-                    oMove.call(ctx, m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
-                } else if (op === 3) {
-                    var cx = raw[j++], cy = raw[j++], x = raw[j++], y = raw[j++];
-                    oQuad.call(ctx,
-                        m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
-                        m0 * x + m2 * y + m4, m1 * x + m3 * y + m5
-                    );
-                } else if (op === 0) {
-                    ctx.closePath();
+            var raw = parsed.rawCoords;
+            var rlen = raw.length;
+            var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
+            if (fastCtx && !ctx._trackLocal) {
+                ctx._cachedPath = null;
+                var sb = ctx._pathBox;
+                if (sb) { sb.minX = Infinity; sb.minY = Infinity; sb.maxX = -Infinity; sb.maxY = -Infinity; sb.n = 0; }
+                fd.origBegin.call(ctx);
+                var oMove = fd.origMove, oLine = fd.origLine, oQuad = fd.origQuad;
+                for (var j = 0; j < rlen; ) {
+                    var op = raw[j++];
+                    if (op === 1) {
+                        var x = raw[j++], y = raw[j++];
+                        oLine.call(ctx, m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+                    } else if (op === 2) {
+                        var x = raw[j++], y = raw[j++];
+                        oMove.call(ctx, m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+                    } else if (op === 3) {
+                        var cx = raw[j++], cy = raw[j++], x = raw[j++], y = raw[j++];
+                        oQuad.call(ctx,
+                            m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
+                            m0 * x + m2 * y + m4, m1 * x + m3 * y + m5
+                        );
+                    } else if (op === 0) {
+                        ctx.closePath();
+                    }
+                }
+            } else {
+                ctx.beginPath();
+                for (var j = 0; j < rlen; ) {
+                    var op = raw[j++];
+                    if (op === 1) {
+                        var x = raw[j++], y = raw[j++];
+                        ctx.lineTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+                    } else if (op === 2) {
+                        var x = raw[j++], y = raw[j++];
+                        ctx.moveTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
+                    } else if (op === 3) {
+                        var cx = raw[j++], cy = raw[j++], x = raw[j++], y = raw[j++];
+                        ctx.quadraticCurveTo(
+                            m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
+                            m0 * x + m2 * y + m4, m1 * x + m3 * y + m5
+                        );
+                    } else if (op === 0) {
+                        ctx.closePath();
+                    }
                 }
             }
-        } else {
-            ctx.beginPath();
-            for (var j = 0; j < rlen; ) {
-                var op = raw[j++];
-                if (op === 1) {
-                    var x = raw[j++], y = raw[j++];
-                    ctx.lineTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
-                } else if (op === 2) {
-                    var x = raw[j++], y = raw[j++];
-                    ctx.moveTo(m0 * x + m2 * y + m4, m1 * x + m3 * y + m5);
-                } else if (op === 3) {
-                    var cx = raw[j++], cy = raw[j++], x = raw[j++], y = raw[j++];
-                    ctx.quadraticCurveTo(
-                        m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
-                        m0 * x + m2 * y + m4, m1 * x + m3 * y + m5
-                    );
-                } else if (op === 0) {
-                    ctx.closePath();
-                }
-            }
-        }
-        ctx.stroke();
+            ctx.stroke();
         } finally {
             ctx.lineWidth = savedLineWidth;
             if (m) {

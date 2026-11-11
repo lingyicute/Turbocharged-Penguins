@@ -75,3 +75,18 @@ test('ids are parsed from sprite names and clip lengths come from the export', (
   assert.equal(other.id, 0);
   assert.equal(other.length, 1);
 });
+
+test('string-identity path cache stays bounded while paths stay correct', () => {
+  const t = timeline();
+  const paths = [];
+  for (let i = 0; i < 2000; i++) {
+    t.begin();
+    paths.push(t.enter('sprite509', `t${i}_0`).path);
+    t.leave();
+    t.end();
+  }
+  assert.equal(paths[0], 'root/sprite509#t0_0');
+  assert.equal(paths[1999], 'root/sprite509#t1999_0');
+  const slot = t.rootClip.kids.get('sprite509');
+  assert.ok(slot.strPaths.size <= 512, `cache grew to ${slot.strPaths.size}`);
+});

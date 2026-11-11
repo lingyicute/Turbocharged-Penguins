@@ -10,6 +10,9 @@
 (() => {
   'use strict';
 
+  // Per-slot cap on cached string-identity paths (see enter()).
+  const MAX_STR_PATHS = 512;
+
   const STOPS = Object.freeze({
     5: [1], 7: [1], 25: [1, 3], 27: [], 28: [1], 31: [], 72: [22],
     184: [1, 2],
@@ -145,12 +148,15 @@
         path = slot.paths[identity];
         if (path === undefined) path = slot.paths[identity] = parent.path + '/' + name + '#' + identity;
       } else {
-        // String identities (penguins, per-tile bonuses) are few and fixed
-        // per slot, so cache their paths too instead of rebuilding the
-        // string on every enter of every frame.
+        // String identities (penguins, per-tile bonuses) repeat every frame,
+        // so cache their paths too instead of rebuilding the string on every
+        // enter. Bonus ids embed the tile number and keep growing while the
+        // player climbs, and a root-level slot lives forever, so cap the
+        // cache; a reset only costs rebuilding the few visible paths.
         const byIdentity = slot.strPaths || (slot.strPaths = new Map());
         path = byIdentity.get(identity);
         if (path === undefined) {
+          if (byIdentity.size >= MAX_STR_PATHS) byIdentity.clear();
           path = parent.path + '/' + name + '#' + identity;
           byIdentity.set(identity, path);
         }
