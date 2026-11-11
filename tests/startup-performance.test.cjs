@@ -529,3 +529,25 @@ test("two-column bitmap shapes with hollow centers probe on a subpath and cache"
   assert.equal(window.shapeCliff._painted, true);
   assert.equal(r.rasters.size, 1);
 });
+
+test("sprite127 and sprite189 skip glyph layout and save/restore when alpha is zero", () => {
+  const {r} = renderer();
+  let saves = 0, leaderCalls = 0, reachedCalls = 0;
+  r.app = {rootFrame: 53, game: null, timeline: {enter() { return {frame: 1}; }, leave() {}, playFrameSounds() {}}};
+  r.drawSprite = () => {};
+  r.leaderboardValue = () => { leaderCalls++; };
+  r.justReached = () => { reachedCalls++; };
+  const ctx = {save() { saves++; }, restore() {}, transform() {}};
+  const zeroCx = {a_mult: 0, a_add: 0};
+  const visCx = {a_mult: 255, a_add: 0};
+  r.place("sprite127", {}, ctx, [1, 0, 0, 1, 0, 0], zeroCx, 1, 0, 0, 0);
+  r.place("sprite189", {}, ctx, [1, 0, 0, 1, 0, 0], zeroCx, 1, 0, 0, 0);
+  assert.equal(saves, 0);
+  assert.equal(leaderCalls, 0);
+  assert.equal(reachedCalls, 0);
+  r.place("sprite127", {}, ctx, [1, 0, 0, 1, 0, 0], visCx, 1, 0, 0, 0);
+  r.place("sprite189", {}, ctx, [1, 0, 0, 1, 0, 0], visCx, 1, 0, 0, 0);
+  assert.equal(saves, 2);
+  assert.equal(leaderCalls, 1);
+  assert.equal(reachedCalls, 1);
+});

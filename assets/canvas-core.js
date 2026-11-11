@@ -972,12 +972,15 @@ cxform.prototype._cut = function (v, min, max) {
 
 cxform.prototype.apply = function (c) {
     if (this._empty) return c;
-    var d = c;
-    d[0] = this._cut(Math.round(d[0] * this.r_mult / 255 + this.r_add), 0, 255);
-    d[1] = this._cut(Math.round(d[1] * this.g_mult / 255 + this.g_add), 0, 255);
-    d[2] = this._cut(Math.round(d[2] * this.b_mult / 255 + this.b_add), 0, 255);
-    d[3] = this._cut(d[3] * this.a_mult / 255 + this.a_add / 255, 0, 1);
-    return d;
+    var r = Math.round(c[0] * this.r_mult / 255 + this.r_add);
+    var g = Math.round(c[1] * this.g_mult / 255 + this.g_add);
+    var b = Math.round(c[2] * this.b_mult / 255 + this.b_add);
+    var a = c[3] * this.a_mult / 255 + this.a_add / 255;
+    c[0] = r < 0 ? 0 : r > 255 ? 255 : r;
+    c[1] = g < 0 ? 0 : g > 255 ? 255 : g;
+    c[2] = b < 0 ? 0 : b > 255 ? 255 : b;
+    c[3] = a < 0 ? 0 : a > 1 ? 1 : a;
+    return c;
 };
 
 cxform.prototype._getLuts = function () {
@@ -1061,8 +1064,7 @@ cxform.prototype.isEmpty = function () {
 
 var placeRaw = function (obj, canvas, ctx, matrix, ctrans, blendMode, frame, ratio, time) {
     var drawFn = window[obj];
-    if (blendMode <= 1 && typeof drawFn === "function" && ctx && ctx._enhanced && ctx._matrix &&
-        ((obj.charCodeAt(0) === 115 && obj.charCodeAt(1) === 112) || obj.charCodeAt(0) === 98)) {
+    if (blendMode <= 1 && typeof drawFn === "function" && ctx && ctx._enhanced && ctx._matrix) {
         if ((matrix[0] === 1 && matrix[1] === 0 && matrix[2] === 0 && matrix[3] === 1 &&
              matrix[4] === 0 && matrix[5] === 0) ||
             (ctrans && ctrans.a_mult <= 0 && ctrans.a_add <= 0 && !ctx._floeMaskPathOnly)) {
@@ -1543,8 +1545,8 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
         } finally {
             ctx.lineWidth = savedLineWidth;
             if (m) {
-                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
                 ctx._matrix = m;
+                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
             }
         }
         return;
@@ -1818,8 +1820,8 @@ function drawPath(ctx, p, doStroke, scaleMode) {
         } finally {
             ctx.lineWidth = savedLineWidth;
             if (m) {
-                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
                 ctx._matrix = m;
+                ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
             }
         }
         return;
