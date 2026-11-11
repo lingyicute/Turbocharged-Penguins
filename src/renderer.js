@@ -362,19 +362,26 @@
         const ch = Math.ceil(h * scale);
         // Tall cliff art is a thin strip, so the limit is area, not the long side.
         if (cw < 1 || ch < 1 || cw > 8192 || ch > 8192 || cw * ch > 1200000) return false;
-        // One sorted pass over the cache instead of a full scan per victim:
-        // a large mint that must evict many entries used to rescan all
-        // MAX_RASTERS entries for every one of them. The sort is stable,
-        // so ties keep insertion order, matching leastRecentlyUsed().
-        let victims = null, nextVictim = 0;
+        // Usually one eviction is enough, and a single O(n) scan is cheaper
+        // than sorting. Only when a large mint must evict several entries do
+        // we sort once, instead of rescanning all MAX_RASTERS per victim.
+        // The sort is stable, so ties keep insertion order, matching
+        // leastRecentlyUsed(). Entries already evicted are skipped.
+        let victims = null, nextVictim = 0, evicted = 0;
         while (this.rasters.size >= MAX_RASTERS || this.rasterPixels + cw * ch > MAX_RASTER_PIXELS) {
-          if (!victims) victims = [...this.rasters.entries()].sort((a, b) => (a[1].seq | 0) - (b[1].seq | 0));
           let oldest, victim;
-          while (nextVictim < victims.length) {
-            const [k, e] = victims[nextVictim++];
-            if (this.rasters.get(k) === e) { oldest = k; victim = e; break; }
+          if (evicted === 0) {
+            oldest = this.leastRecentlyUsed();
+            if (oldest !== undefined) victim = this.rasters.get(oldest);
+          } else {
+            if (!victims) victims = [...this.rasters.entries()].sort((x, y) => (x[1].seq | 0) - (y[1].seq | 0));
+            while (nextVictim < victims.length) {
+              const [k, e] = victims[nextVictim++];
+              if (this.rasters.get(k) === e) { oldest = k; victim = e; break; }
+            }
           }
           if (oldest === undefined) break;
+          evicted++;
           this.rasterPixels -= victim.px;
           this.rasters.delete(oldest);
           this.releaseRaster(victim);
