@@ -551,3 +551,33 @@ test("sprite127 and sprite189 skip glyph layout and save/restore when alpha is z
   assert.equal(leaderCalls, 1);
   assert.equal(reachedCalls, 1);
 });
+
+test("all 56 sprite318 frames traverse mask and content without full-stage scratch canvases", () => {
+  const start = art.indexOf("function sprite318");
+  const end = art.indexOf("\nfunction ", start + 10);
+  let stack = 0, clips = 0, masks = 0;
+  const ctx = {
+    save() { stack++; },
+    restore() { stack--; assert.ok(stack >= 0); },
+    clip(rule) { assert.equal(rule, "evenodd"); clips++; }
+  };
+  let callIndex = 0;
+  const scope = {
+    canvas: {},
+    cxform: function() {},
+    place(name, canvas, ctx) {
+      const idx = callIndex++ % 3;
+      if (idx === 1) { assert.equal(ctx._floeMaskPathOnly, true); masks++; }
+      else assert.ok(!ctx._floeMaskPathOnly);
+    },
+    createCanvas() { throw Error("full-stage mask allocation"); }
+  };
+  vm.runInNewContext(art.slice(start, end), scope);
+  const cx = { merge() { return this; } };
+  for (let frame = 0; frame < 56; frame++) {
+    scope.sprite318(ctx, cx, frame, 0, 0);
+    assert.equal(stack, 0);
+  }
+  assert.equal(clips, 56);
+  assert.equal(masks, 56);
+});

@@ -1490,9 +1490,43 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
     var ops = parsed.ops;
     var len = ops.length;
     var m = ctx._matrix;
+    var fd = _fastDraw;
+    var fastCtx = fd && ctx._enhanced &&
+        ctx.beginPath === fd.begin && ctx.moveTo === fd.move &&
+        ctx.lineTo === fd.line && ctx.quadraticCurveTo === fd.quad;
+    var rf = ratio / 65535;
+
+    if (ctx._trackLocal) {
+        if (doStroke) trackStrokePad(ctx, scaleMode);
+        ctx._cachedPath = null;
+        var tMinX = Infinity, tMinY = Infinity, tMaxX = -Infinity, tMaxY = -Infinity, tn = 0;
+        for (var ti = 0; ti < len; ) {
+            var tcmd = ops[ti++];
+            if (tcmd === 1 || tcmd === 2) {
+                var tx = ops[ti] + (ops[ti + 1] - ops[ti]) * rf;
+                var ty = ops[ti + 2] + (ops[ti + 3] - ops[ti + 2]) * rf;
+                if (tx < tMinX) tMinX = tx; if (tx > tMaxX) tMaxX = tx;
+                if (ty < tMinY) tMinY = ty; if (ty > tMaxY) tMaxY = ty;
+                tn++;
+                ti += 4;
+            } else if (tcmd === 3) {
+                var tcx = ops[ti] + (ops[ti + 1] - ops[ti]) * rf;
+                var tcy = ops[ti + 2] + (ops[ti + 3] - ops[ti + 2]) * rf;
+                var tqx = ops[ti + 4] + (ops[ti + 5] - ops[ti + 4]) * rf;
+                var tqy = ops[ti + 6] + (ops[ti + 7] - ops[ti + 6]) * rf;
+                if (tcx < tMinX) tMinX = tcx; if (tcx > tMaxX) tMaxX = tcx;
+                if (tcy < tMinY) tMinY = tcy; if (tcy > tMaxY) tMaxY = tcy;
+                if (tqx < tMinX) tMinX = tqx; if (tqx > tMaxX) tMaxX = tqx;
+                if (tqy < tMinY) tMinY = tqy; if (tqy > tMaxY) tMaxY = tqy;
+                tn += 2;
+                ti += 8;
+            }
+        }
+        applyParsedBox(ctx, tn ? { minX: tMinX, minY: tMinY, maxX: tMaxX, maxY: tMaxY, n: tn } : null);
+        return;
+    }
 
     if (doStroke) {
-        trackStrokePad(ctx, scaleMode);
         // As in drawPath: restore lineWidth and the transform by hand rather
         // than paying for a full save()/restore().
         var savedLineWidth = ctx.lineWidth;
@@ -1512,33 +1546,66 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
             }
             ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-            ctx.beginPath();
             var m0 = m[0], m1 = m[1], m2 = m[2], m3 = m[3], m4 = m[4], m5 = m[5];
-            var rf = ratio / 65535;
-            for (var i = 0; i < len; ) {
-                var cmd = ops[i++];
-                if (cmd === 1) {
-                    var lx = ops[i] + (ops[i + 1] - ops[i]) * rf;
-                    var ly = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
-                    ctx.lineTo(m0 * lx + m2 * ly + m4, m1 * lx + m3 * ly + m5);
-                    i += 4;
-                } else if (cmd === 2) {
-                    var mx = ops[i] + (ops[i + 1] - ops[i]) * rf;
-                    var my = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
-                    ctx.moveTo(m0 * mx + m2 * my + m4, m1 * mx + m3 * my + m5);
-                    i += 4;
-                } else if (cmd === 3) {
-                    var cx = ops[i] + (ops[i + 1] - ops[i]) * rf;
-                    var cy = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
-                    var qx = ops[i + 4] + (ops[i + 5] - ops[i + 4]) * rf;
-                    var qy = ops[i + 6] + (ops[i + 7] - ops[i + 6]) * rf;
-                    ctx.quadraticCurveTo(
-                        m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
-                        m0 * qx + m2 * qy + m4, m1 * qx + m3 * qy + m5
-                    );
-                    i += 8;
-                } else if (cmd === 0) {
-                    ctx.closePath();
+            if (fastCtx) {
+                ctx._cachedPath = null;
+                var sb = ctx._pathBox;
+                if (sb) { sb.minX = Infinity; sb.minY = Infinity; sb.maxX = -Infinity; sb.maxY = -Infinity; sb.n = 0; }
+                fd.origBegin.call(ctx);
+                var oMove = fd.origMove, oLine = fd.origLine, oQuad = fd.origQuad;
+                for (var i = 0; i < len; ) {
+                    var cmd = ops[i++];
+                    if (cmd === 1) {
+                        var lx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                        var ly = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                        oLine.call(ctx, m0 * lx + m2 * ly + m4, m1 * lx + m3 * ly + m5);
+                        i += 4;
+                    } else if (cmd === 2) {
+                        var mx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                        var my = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                        oMove.call(ctx, m0 * mx + m2 * my + m4, m1 * mx + m3 * my + m5);
+                        i += 4;
+                    } else if (cmd === 3) {
+                        var cx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                        var cy = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                        var qx = ops[i + 4] + (ops[i + 5] - ops[i + 4]) * rf;
+                        var qy = ops[i + 6] + (ops[i + 7] - ops[i + 6]) * rf;
+                        oQuad.call(ctx,
+                            m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
+                            m0 * qx + m2 * qy + m4, m1 * qx + m3 * qy + m5
+                        );
+                        i += 8;
+                    } else if (cmd === 0) {
+                        ctx.closePath();
+                    }
+                }
+            } else {
+                ctx.beginPath();
+                for (var i = 0; i < len; ) {
+                    var cmd = ops[i++];
+                    if (cmd === 1) {
+                        var lx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                        var ly = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                        ctx.lineTo(m0 * lx + m2 * ly + m4, m1 * lx + m3 * ly + m5);
+                        i += 4;
+                    } else if (cmd === 2) {
+                        var mx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                        var my = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                        ctx.moveTo(m0 * mx + m2 * my + m4, m1 * mx + m3 * my + m5);
+                        i += 4;
+                    } else if (cmd === 3) {
+                        var cx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                        var cy = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                        var qx = ops[i + 4] + (ops[i + 5] - ops[i + 4]) * rf;
+                        var qy = ops[i + 6] + (ops[i + 7] - ops[i + 6]) * rf;
+                        ctx.quadraticCurveTo(
+                            m0 * cx + m2 * cy + m4, m1 * cx + m3 * cy + m5,
+                            m0 * qx + m2 * qy + m4, m1 * qx + m3 * qy + m5
+                        );
+                        i += 8;
+                    } else if (cmd === 0) {
+                        ctx.closePath();
+                    }
                 }
             }
             ctx.stroke();
@@ -1552,8 +1619,52 @@ function drawMorphPath(ctx, p, ratio, doStroke, scaleMode) {
         return;
     }
 
+    if (fastCtx) {
+        ctx._cachedPath = null;
+        fd.origBegin.call(ctx);
+        var fMove = fd.origMove, fLine = fd.origLine, fQuad = fd.origQuad;
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, n = 0;
+        for (var i = 0; i < len; ) {
+            var cmd = ops[i++];
+            if (cmd === 1) {
+                var lx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                var ly = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                if (lx < minX) minX = lx; if (lx > maxX) maxX = lx;
+                if (ly < minY) minY = ly; if (ly > maxY) maxY = ly;
+                n++;
+                fLine.call(ctx, lx, ly);
+                i += 4;
+            } else if (cmd === 2) {
+                var mx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                var my = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                if (mx < minX) minX = mx; if (mx > maxX) maxX = mx;
+                if (my < minY) minY = my; if (my > maxY) maxY = my;
+                n++;
+                fMove.call(ctx, mx, my);
+                i += 4;
+            } else if (cmd === 3) {
+                var cx = ops[i] + (ops[i + 1] - ops[i]) * rf;
+                var cy = ops[i + 2] + (ops[i + 3] - ops[i + 2]) * rf;
+                var qx = ops[i + 4] + (ops[i + 5] - ops[i + 4]) * rf;
+                var qy = ops[i + 6] + (ops[i + 7] - ops[i + 6]) * rf;
+                if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+                if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+                if (qx < minX) minX = qx; if (qx > maxX) maxX = qx;
+                if (qy < minY) minY = qy; if (qy > maxY) maxY = qy;
+                n += 2;
+                fQuad.call(ctx, cx, cy, qx, qy);
+                i += 8;
+            } else if (cmd === 0) {
+                ctx.closePath();
+            }
+        }
+        var b = ctx._pathBox;
+        if (!b) b = ctx._pathBox = {minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, n: 0};
+        b.minX = minX; b.minY = minY; b.maxX = maxX; b.maxY = maxY; b.n = n;
+        return;
+    }
+
     ctx.beginPath();
-    var rf = ratio / 65535;
     for (var i = 0; i < len; ) {
         var cmd = ops[i++];
         if (cmd === 1) {

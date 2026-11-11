@@ -170,7 +170,7 @@
       if (changed) {
         this.renderer.render();
         // Rendering creates clips the pre-render state did not yet include.
-        this.visualStateChanged();
+        this.visualStateChanged(false, true);
       }
       requestAnimationFrame(raf);
     }
@@ -185,9 +185,9 @@
     // to decide we must repaint. Walking every clip to append [id,frame,playing]
     // tuples was the single largest profile slice during flight; we only do
     // that full walk on idle/menu frames where clips actually may be static.
-    visualStateChanged(fast = false) {
+    visualStateChanged(fast = false, recordOnly = false) {
       const previous = this.visualParts[this.visualPartIndex];
-      const current = this.visualParts[this.visualPartIndex ^ 1];
+      const current = recordOnly ? previous : this.visualParts[this.visualPartIndex ^ 1];
       const g = this.game;
       current.length = 0;
       current.push(this.rootFrame, this.panelFrame, this.mode, this.audio.muted ? 1 : 0,
@@ -208,6 +208,11 @@
           }
         }
       }
+      if (recordOnly) {
+        for (const clip of this.timeline.clips.values())
+          current.push(clip.id, clip.frame, clip.playing ? 1 : 0);
+        return false;
+      }
       const headerLen = current.length;
       let changed = previous.length < headerLen;
       if (!changed) {
@@ -217,10 +222,8 @@
       }
       const inMotion = this.mode === 'playing' || this.mode === 'ending';
       if (fast && inMotion && changed) {
-        // Fast lane — we already know we need to repaint, but we still need
-        // the post-render VSC call to rebuild a full snapshot for the next
-        // frame. Swap indices without walking clips; the post-render call
-        // (which passes fast=false) will fill everything in.
+        // Fast lane — we already know we need to repaint, and the post-render
+        // recordOnly call will populate the current snapshot in place.
         this.visualPartIndex ^= 1;
         return true;
       }
